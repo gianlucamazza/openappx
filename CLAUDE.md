@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it does **not** compile PE binaries or sign packages natively (v0). See `docs/roadmap.md` for what is committed vs. research.
+`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it does **not** compile PE binaries, and signature *creation* is deliberately out of scope (v0) — reading and verifying signatures is implemented. See `docs/roadmap.md` for what is committed vs. research.
 
 ## Commands
 
@@ -44,11 +44,12 @@ Both checkers return a list of human-readable problem strings rather than raisin
 
 - **Two path spellings for the same file.** `package_path()` produces backslash names (`Assets\StoreLogo.png`) used in `AppxBlockMap.xml` and in `SKIP_NAMES`; `_zip_name()` converts back to forward slashes for the actual ZIP entry. Any new code touching names must pick the right one.
 - **XML is rendered as byte strings, not ElementTree** — CRLF line endings, UTF-8, fixed attribute order. Blockmap/content-types bytes are compared against reference tooling, so don't "clean this up" with a serializer.
-- **Compression differs by part**: payload files are DEFLATE (level 6), `[Content_Types].xml` and `AppxBlockMap.xml` are STORED.
-- **`LfhSize` is computed, not measured**: `30 + len(utf8_name) + len(extra)` with `extra=b""`. If `zipfile` ever emits extra fields, the blockmap silently disagrees with the archive; `tests/test_format.py::test_lfh_size_matches_written_headers` parses the real headers back to catch that.
-- `pack_core.py` sets `info.flag_bits |= 0x800`, but CPython ≥3.11 strips that bit again for ASCII names (`zipfile._encodeFilenameFlags`). The emitted flag is `0x0`. That is valid — don't "fix" it by fighting stdlib; just don't rely on the bit being present.
-- **Output is byte-reproducible**: `ZipInfo` is built without `date_time`, so entries get the 1980 epoch default rather than wall-clock time. Do not switch to `ZipInfo.from_file()` / `writestr(arcname, ...)`, both of which stamp the current time.
-- **Block hashes cover uncompressed data; `Block/@Size` is the _compressed_ length** of that 64 KiB block, omitted entirely for stored parts. The packer currently writes the uncompressed length and gives empty files one block instead of zero — both confirmed wrong against a Microsoft-signed package, both tracked by `test_our_own_packages_are_conformant` (xfail, strict). Fixing them requires emitting deflate block-by-block, which `zipfile.writestr` cannot express.
+- **`LfhSize` is computed, not measured**: `30 + len(utf8_name)`, valid only because the writer emits no extra fields. `tests/test_format.py::test_lfh_size_matches_written_headers` parses the real headers back to keep that honest.
+- `[Content_Types].xml` and `AppxBlockMap.xml` are always STORED, so a reader can reach them without inflating.
+- **Output is byte-reproducible**: timestamps are hard-coded to the 1980 DOS epoch. Never stamp wall-clock time into an entry.
+- **Block hashes cover uncompressed data; `Block/@Size` is the *compressed* length** of that 64 KiB block, omitted entirely for stored parts, and an empty file has zero blocks. All three were established against a Microsoft-signed package, not inferred — `tests/test_signature.py` re-checks them on every run.
+- **The archive is written by hand** (`pack_core.py`: `_write_entry`, `_write_central_directory`). This is not gratuitous: reporting per-block compressed sizes means feeding a pre-built deflate stream (`blockmap.deflate_blocks`, `Z_FULL_FLUSH` per block) into each entry, which `zipfile.writestr` cannot express. Writing it ourselves also pins `LfhSize` (no extra fields) and the 1980 timestamps that make output reproducible.
+- Payload is deflated only when compression actually shrinks it; otherwise it is stored, and then `Block/@Size` must be absent.
 - **Generated parts are never read as payload**: `SKIP_NAMES` in `blockmap.py` guards against a re-pack picking up a previous run's output.
 - Files are sorted case-insensitively by package path before hashing, so pack output is deterministic.
 

@@ -66,6 +66,36 @@ def test_detects_a_package_tampered_after_signing(tampered_blockmap: Path):
     assert any("AXBM digest mismatch" in p for p in problems)
 
 
+def test_a_microsoft_package_passes_the_same_checks_as_ours(signed_reference: Path):
+    """The conformance rules `inspect` enforces are the real ones.
+
+    If this fails, our reading of the format drifted — not Microsoft's packer.
+    """
+    from openappx.inspect import inspect_package
+
+    assert inspect_package(signed_reference)["problems"] == []
+
+
+def test_our_packages_and_microsofts_agree_on_block_size_semantics(
+    signed_reference: Path, tmp_path: Path
+):
+    """Block/@Size present iff the part is deflated, in both packers."""
+    import xml.etree.ElementTree as ET
+
+    from openappx.blockmap import NS
+
+    for package in (signed_reference, pack_python(EXAMPLE, tmp_path / "ours.msix")):
+        with zipfile.ZipFile(package) as zf:
+            blockmap = ET.fromstring(zf.read("AppxBlockMap.xml"))
+            for el in blockmap.findall(f"{{{NS}}}File"):
+                info = zf.getinfo(el.get("Name").replace("\\", "/"))
+                deflated = info.compress_type == zipfile.ZIP_DEFLATED
+                for block in el.findall(f"{{{NS}}}Block"):
+                    assert (block.get("Size") is not None) == deflated, (
+                        f"{package.name}: {el.get('Name')}"
+                    )
+
+
 # --- synthetic: error paths ------------------------------------------------
 
 

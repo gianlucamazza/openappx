@@ -6,6 +6,7 @@ package that packs fine but is rejected by the target installer.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import xml.etree.ElementTree as ET
 import zipfile
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from openappx.blockmap import BLOCK_SIZE, NS, package_path, read_local_header
+from openappx.blockmap import NS, hash_file_blocks, package_path, read_local_header
 from openappx.pack_core import pack_python
 
 REPO = Path(__file__).resolve().parents[1]
@@ -64,24 +65,52 @@ def test_blockmap_covers_exactly_the_payload(packed: Path):
     assert {n.replace("\\", "/") for n in blockmap_files(packed)} == payload
 
 
-def test_blockmap_hashes_match_file_contents(packed: Path):
+def test_blockmap_hashes_cover_uncompressed_blocks(packed: Path):
+    """Hash is over the plain 64 KiB block; File/@Size is the plain file size."""
     with zipfile.ZipFile(packed) as zf:
         for name, el in blockmap_files(packed).items():
             data = zf.read(name.replace("\\", "/"))
             blocks = el.findall(f"{{{NS}}}Block")
-            assert sum(int(b.get("Size", BLOCK_SIZE)) for b in blocks) == len(data)
+            hashes, _ = hash_file_blocks(data)
             assert int(el.get("Size")) == len(data)
+            assert len(blocks) == len(hashes)
+            for block, digest in zip(blocks, hashes):
+                assert block.get("Hash") == base64.b64encode(digest).decode()
 
 
-def test_generated_parts_are_stored_payload_is_deflated(packed: Path):
+def test_block_size_is_the_compressed_length(packed: Path):
+    """Block/@Size counts compressed bytes, and is absent on stored parts.
+
+    Verified against a Microsoft-signed package — see docs/signing.md.
+    """
+    with zipfile.ZipFile(packed) as zf:
+        for name, el in blockmap_files(packed).items():
+            info = zf.getinfo(name.replace("\\", "/"))
+            sizes = [b.get("Size") for b in el.findall(f"{{{NS}}}Block")]
+            if info.compress_type == zipfile.ZIP_STORED:
+                assert all(s is None for s in sizes), name
+            else:
+                assert all(s is not None for s in sizes), name
+                # the deflate end-of-stream marker belongs to no block
+                assert sum(int(s) for s in sizes) == info.compress_size - 2, name
+
+
+def test_generated_parts_are_stored(packed: Path):
     with zipfile.ZipFile(packed) as zf:
         for info in zf.infolist():
-            expected = (
-                zipfile.ZIP_STORED
-                if info.filename in GENERATED_PARTS
-                else zipfile.ZIP_DEFLATED
-            )
-            assert info.compress_type == expected, info.filename
+            if info.filename in GENERATED_PARTS:
+                assert info.compress_type == zipfile.ZIP_STORED, info.filename
+
+
+def test_payload_is_deflated_only_when_it_pays_off(packed: Path):
+    with zipfile.ZipFile(packed) as zf:
+        for info in zf.infolist():
+            if info.filename in GENERATED_PARTS:
+                continue
+            if info.compress_type == zipfile.ZIP_DEFLATED:
+                assert info.compress_size < info.file_size, info.filename
+            else:
+                assert info.compress_size == info.file_size, info.filename
 
 
 def test_preseeded_generated_parts_are_not_packed_as_payload(tmp_path: Path):
@@ -100,7 +129,8 @@ def test_preseeded_generated_parts_are_not_packed_as_payload(tmp_path: Path):
     assert "AppxBlockMap.xml" not in blockmap_files(out)
 
 
-def test_empty_file_gets_one_zero_length_block(tmp_path: Path):
+def test_empty_file_has_no_blocks(tmp_path: Path):
+    """`<File Name="…" Size="0" LfhSize="…"/>`, as Microsoft's packer emits."""
     layout = tmp_path / "layout"
     layout.mkdir()
     (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
@@ -108,10 +138,10 @@ def test_empty_file_gets_one_zero_length_block(tmp_path: Path):
 
     out = pack_python(layout, tmp_path / "out.msix")
     el = blockmap_files(out)["empty.bin"]
-    blocks = el.findall(f"{{{NS}}}Block")
     assert int(el.get("Size")) == 0
-    assert len(blocks) == 1
-    assert blocks[0].get("Size") == "0"
+    assert el.findall(f"{{{NS}}}Block") == []
+    with zipfile.ZipFile(out) as zf:
+        assert zf.getinfo("empty.bin").compress_type == zipfile.ZIP_STORED
 
 
 def test_nested_paths_use_backslash_in_blockmap_slash_in_zip(tmp_path: Path):

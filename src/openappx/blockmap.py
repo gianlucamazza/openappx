@@ -6,9 +6,10 @@ import base64
 import hashlib
 import os
 import struct
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 BLOCK_SIZE = 64 * 1024
 HASH_METHOD = "http://www.w3.org/2001/04/xmlenc#sha256"
@@ -27,10 +28,16 @@ SKIP_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class FileBlocks:
+    """One <File> entry: hashes over uncompressed blocks, sizes over compressed ones.
+
+    `compressed_sizes` is None for stored parts, where the format omits
+    Block/@Size entirely.
+    """
+
     name: str
     size: int
     block_hashes: Sequence[bytes]
-    block_sizes: Sequence[int]
+    compressed_sizes: Sequence[int] | None = None
 
 
 def package_path(rel: Path) -> str:
@@ -38,12 +45,13 @@ def package_path(rel: Path) -> str:
 
 
 def hash_file_blocks(data: bytes) -> Tuple[List[bytes], List[int]]:
+    """SHA-256 over each uncompressed 64 KiB block.
+
+    An empty file has no blocks at all — `<File Name="…" Size="0" LfhSize="…"/>`
+    with no children, as produced by Microsoft's own packer.
+    """
     hashes: List[bytes] = []
     sizes: List[int] = []
-    if not data:
-        hashes.append(hashlib.sha256(b"").digest())
-        sizes.append(0)
-        return hashes, sizes
     offset = 0
     while offset < len(data):
         chunk = data[offset : offset + BLOCK_SIZE]
@@ -51,6 +59,27 @@ def hash_file_blocks(data: bytes) -> Tuple[List[bytes], List[int]]:
         sizes.append(len(chunk))
         offset += BLOCK_SIZE
     return hashes, sizes
+
+
+def deflate_blocks(data: bytes, level: int = 6) -> Tuple[bytes, List[int]]:
+    """Deflate `data` one 64 KiB block at a time.
+
+    Returns the raw deflate stream and the compressed length of each block.
+    Z_FULL_FLUSH terminates every block so its compressed extent is known — that
+    length is what Block/@Size reports. The final `flush()` emits a 2-byte
+    end-of-stream marker belonging to no block, which is why the block sizes sum
+    to slightly less than the entry's compressed size.
+    """
+    compressor = zlib.compressobj(level, zlib.DEFLATED, -zlib.MAX_WBITS)
+    stream = bytearray()
+    sizes: List[int] = []
+    for offset in range(0, len(data), BLOCK_SIZE):
+        block = compressor.compress(data[offset : offset + BLOCK_SIZE])
+        block += compressor.flush(zlib.Z_FULL_FLUSH)
+        stream += block
+        sizes.append(len(block))
+    stream += compressor.flush()
+    return bytes(stream), sizes
 
 
 def zip_local_header_size(name_utf8: bytes, extra: bytes = b"") -> int:
@@ -104,20 +133,36 @@ def collect_files(root: Path) -> List[Path]:
     return files
 
 
-def build_file_blocks(root: Path, files: Iterable[Path]) -> List[FileBlocks]:
-    out: List[FileBlocks] = []
-    for p in files:
-        data = p.read_bytes()
-        hashes, sizes = hash_file_blocks(data)
-        out.append(
-            FileBlocks(
-                name=package_path(p.relative_to(root)),
-                size=len(data),
-                block_hashes=hashes,
-                block_sizes=sizes,
-            )
+@dataclass(frozen=True)
+class PreparedFile:
+    """A payload file ready to be written: blockmap entry plus archive bytes."""
+
+    blocks: FileBlocks
+    payload: bytes  # what goes into the archive (deflated or verbatim)
+    deflated: bool
+
+
+def prepare_file(name: str, data: bytes, level: int = 6) -> PreparedFile:
+    """Hash and compress one payload file.
+
+    Deflate is used only when it actually pays off; otherwise the part is stored
+    and Block/@Size is omitted, matching what Microsoft's packer does for
+    already-compressed assets.
+    """
+    hashes, _ = hash_file_blocks(data)
+    stream, compressed_sizes = deflate_blocks(data, level)
+
+    if data and len(stream) < len(data):
+        return PreparedFile(
+            blocks=FileBlocks(name, len(data), hashes, compressed_sizes),
+            payload=stream,
+            deflated=True,
         )
-    return out
+    return PreparedFile(
+        blocks=FileBlocks(name, len(data), hashes, None),
+        payload=data,
+        deflated=False,
+    )
 
 
 def _xml_escape(s: str) -> str:
@@ -136,15 +181,20 @@ def render_blockmap_xml(entries: Sequence[FileBlocks], lfh_sizes: dict) -> bytes
     ]
     for e in entries:
         lfh = lfh_sizes[e.name]
-        lines.append(
-            f'  <File Name="{_xml_escape(e.name)}" Size="{e.size}" LfhSize="{lfh}">'
-        )
-        for h, sz in zip(e.block_hashes, e.block_sizes):
+        head = f'  <File Name="{_xml_escape(e.name)}" Size="{e.size}" LfhSize="{lfh}"'
+        if not e.block_hashes:  # empty file: no blocks at all
+            lines.append(head + "/>")
+            continue
+
+        lines.append(head + ">")
+        for i, h in enumerate(e.block_hashes):
             b64 = base64.b64encode(h).decode("ascii")
-            if sz == BLOCK_SIZE:
+            if e.compressed_sizes is None:  # stored part: no compressed length
                 lines.append(f'    <Block Hash="{b64}"/>')
             else:
-                lines.append(f'    <Block Hash="{b64}" Size="{sz}"/>')
+                lines.append(
+                    f'    <Block Hash="{b64}" Size="{e.compressed_sizes[i]}"/>'
+                )
         lines.append("  </File>")
     lines.append("</BlockMap>")
     return ("\r\n".join(lines) + "\r\n").encode("utf-8")

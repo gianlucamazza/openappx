@@ -4,7 +4,10 @@
 
 Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI as an alternative pack backend.
 
-> **Status:** experimental (v0). Pack + blockmap + layout validation + package inspection work. Appx code-signing and PE/UWP compilation are **out of scope for v0** (see [Non-goals](#non-goals) and [docs/roadmap.md](docs/roadmap.md)).
+> **Status:** experimental (v0). Pack, blockmap, layout validation, package
+> inspection and signature *verification* work. Creating signatures and compiling
+> PE/UWP binaries are **out of scope for v0** (see [Non-goals](#non-goals),
+> [docs/signing.md](docs/signing.md) and [docs/roadmap.md](docs/roadmap.md)).
 
 ---
 
@@ -23,7 +26,8 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 ## Goals
 
 - Pack an Appx/MSIX layout on Linux, macOS, or any host with Python 3.10+
-- Generate standards-oriented `AppxBlockMap` (64 KiB SHA-256 blocks)
+- Generate a conformant `AppxBlockMap` (64 KiB SHA-256 blocks, compressed block
+  sizes) — checked against Microsoft-signed reference packages, not guessed
 - Validate common layout mistakes before pack (missing `AppxManifest.xml`, missing `Executable`, missing logos)
 - Stay **dependency-light** (default path: Python standard library only)
 - Produce **byte-reproducible** packages (fixed timestamps; same layout → same `.msix`)
@@ -130,16 +134,16 @@ covers and reports any mismatch — see [docs/signing.md](docs/signing.md). It w
 packages produced by any tool, not just openappx.
 
 ```text
-Package: /tmp/example.msix (2915 bytes)
+Package: /tmp/example.msix (2916 bytes)
 Identity: Name=OpenAppx.Example  Publisher=CN=OpenAppx-Example  Version=0.1.0.0
 Signature: absent
 
 Part                        Size      Stored   Method  Blocks
-app.exe                       31          33  deflate       1
-AppxManifest.xml            1265         583  deflate       1
-Assets/StoreLogo.png          67          59  deflate       1
+app.exe                       31          31    store       1
+AppxManifest.xml            1265         590  deflate       1
+Assets/StoreLogo.png          67          66  deflate       1
 [Content_Types].xml         1061        1061    store       -
-AppxBlockMap.xml             621         621    store       -
+AppxBlockMap.xml             610         610    store       -
 
 OK: blockmap and content types are consistent with the archive
 ```
