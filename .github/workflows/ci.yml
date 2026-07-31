@@ -21,7 +21,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        # [sign] matters: without it tests/test_signer.py skips itself entirely,
+        # and the signature builder is the least forgiving code here.
+        run: python -m pip install -e ".[dev,sign]"
 
       - name: Test
         run: pytest -q
@@ -30,10 +32,20 @@ jobs:
           # blip must not turn into a red build.
           OPENAPPX_NO_NETWORK: ${{ matrix.python-version == '3.13' && '' || '1' }}
 
-      - name: Smoke-pack and inspect the example layout
+      - name: Fail if the signing tests were skipped
+        run: |
+          python - <<'PY'
+          import cryptography  # noqa: F401  — must be importable for test_signer
+          print("cryptography present, signing tests ran")
+          PY
+
+      - name: Pack, sign and inspect the example layout
         run: |
           openappx validate --root examples/minimal-layout
           openappx pack --root examples/minimal-layout --out /tmp/example.msix
+          openappx inspect --package /tmp/example.msix
+          openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out /tmp/ci
+          openappx sign --package /tmp/example.msix --pfx /tmp/ci.pfx
           openappx inspect --package /tmp/example.msix
 
       - name: No-install invocation path still works

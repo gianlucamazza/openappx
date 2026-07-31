@@ -33,17 +33,23 @@ L1  Target platform (not openappx)
 | `openappx.pack_core` | Pack backends: `python`, `makemsix`                                       |
 | `openappx.pack`      | CLI over `pack_core`                                                      |
 | `openappx.inspect`   | Package / blockmap coherence checks (**after** pack)                      |
-| `openappx.sign`      | Placeholder package for future signing API                                |
+| `openappx.sign`      | `AppxSignature.p7x`: digests, DER encoding, signing, verification          |
+| `openappx.deploy`    | Windows Device Portal client (install / list / uninstall / trust a cert)   |
 
 `validate` and `inspect` bracket the pack step and never share code paths: the first
 greps a layout that may be broken, the second re-derives hashes from a finished
-archive. A package that survives both is structurally sound — which is a weaker claim
-than "installs", since certification policy lives outside this tool.
+archive. A package that survives both is structurally sound. That is still weaker than
+"installs": the device also checks the signature, the manifest's semantics, and
+its own policy. `docs/signing.md` maps which stage produces which error code.
 
 ## Backends
 
 1. **`python`** — pure stdlib. Fast, portable, unsigned packages. Default.
-2. **`makemsix`** — subprocess to Microsoft’s open MSIX SDK CLI (when built with pack support). Can attach a PFX for signing.
+2. **`makemsix`** — subprocess to Microsoft's open MSIX SDK CLI, when built with
+   pack support. It produces **unsigned** packages too: upstream ships a
+   signature *validator*, not a creator, and `makemsix pack` accepts only
+   `-d`/`-p`. Kept as an alternative packer; not covered by tests, since the
+   binary is rarely available.
 
 ## Extension points
 
