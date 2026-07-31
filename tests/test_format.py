@@ -181,3 +181,31 @@ def test_pack_overwrites_existing_output(tmp_path: Path):
     out.write_bytes(b"junk")
     pack_python(EXAMPLE, out)
     assert zipfile.is_zipfile(out)
+
+
+def test_non_ascii_names_set_the_utf8_flag(tmp_path: Path):
+    """Without bit 11 a reader falls back to CP437 and mangles the name."""
+    layout = tmp_path / "layout"
+    (layout / "Assets").mkdir(parents=True)
+    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
+    (layout / "Assets" / "città-日本.png").write_bytes(b"\x89PNG")
+
+    out = pack_python(layout, tmp_path / "out.msix")
+    raw = out.read_bytes()
+
+    with zipfile.ZipFile(out) as zf:
+        assert "Assets/città-日本.png" in zf.namelist()
+        for info in zf.infolist():
+            header = read_local_header(raw, info.header_offset)
+            expected = 0 if info.filename.isascii() else 0x800
+            assert header.flag_bits & 0x800 == expected, info.filename
+            # the central directory must agree with the local header
+            assert info.flag_bits & 0x800 == expected, info.filename
+
+
+def test_ascii_names_do_not_set_the_utf8_flag(packed: Path):
+    raw = packed.read_bytes()
+    with zipfile.ZipFile(packed) as zf:
+        for info in zf.infolist():
+            assert info.filename.isascii()
+            assert read_local_header(raw, info.header_offset).flag_bits == 0

@@ -46,6 +46,11 @@ _METHOD_STORE = 0
 _METHOD_DEFLATE = 8
 
 
+# Bit 11 marks the name as UTF-8. Required for anything outside ASCII: without
+# it a reader falls back to CP437 and the name comes out as mojibake.
+_FLAG_UTF8_NAME = 0x800
+
+
 @dataclass(frozen=True)
 class _Entry:
     name: bytes  # UTF-8, forward slashes
@@ -54,6 +59,7 @@ class _Entry:
     method: int
     crc: int
     offset: int
+    flags: int = 0
 
 
 def _write_entry(
@@ -67,12 +73,13 @@ def _write_entry(
         method=method,
         crc=zlib.crc32(plain) & 0xFFFFFFFF,
         offset=len(out),
+        flags=0 if name.isascii() else _FLAG_UTF8_NAME,
     )
     out += struct.pack(
         "<IHHHHHIIIHH",
         _LFH_SIGNATURE,
         _VERSION,
-        0,  # flags: no UTF-8 bit; CPython strips it for ASCII names anyway
+        entry.flags,
         method,
         _DOS_EPOCH_TIME,
         _DOS_EPOCH_DATE,
@@ -95,7 +102,7 @@ def _write_central_directory(out: bytearray, entries: list[_Entry]) -> None:
             _CDH_SIGNATURE,
             _VERSION_MADE_BY,
             _VERSION,  # version needed
-            0,  # flags
+            e.flags,
             e.method,
             _DOS_EPOCH_TIME,
             _DOS_EPOCH_DATE,
@@ -227,6 +234,7 @@ def append_stored_part(archive: bytes, name: str, payload: bytes) -> bytes:
                 method=method,
                 crc=crc,
                 offset=offset,
+                flags=flags,
             )
         )
         offset += 30 + name_len + extra_len + csize
