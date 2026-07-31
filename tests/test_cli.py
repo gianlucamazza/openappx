@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO / "examples" / "minimal-layout"
 RESOURCE_ONLY = REPO / "examples" / "resource-only"
 
-SUBCOMMANDS = ("pack", "sign", "validate", "inspect", "deploy")
+SUBCOMMANDS = ("pack", "unpack", "sign", "validate", "inspect", "deploy")
 
 
 def test_bare_invocation_prints_usage_and_fails(capsys):

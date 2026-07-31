@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -90,6 +91,9 @@ class StubHandler(BaseHTTPRequestHandler):
             return self._send(401, {"Reason": "nope"})
         RECEIVED["deleted"] = self.path
         return self._send(200, {"Reason": "removed"})
+
+    # /api/taskmanager/app shares do_POST and do_DELETE above; the stub records
+    # the path either way, which is what the tests assert on.
 
 
 @pytest.fixture
@@ -347,3 +351,43 @@ def test_tls_context_disables_verification_explicitly():
     context = DevicePortal._tls_context()
     assert context.check_hostname is False
     assert context.verify_mode == ssl.CERT_NONE
+
+
+def test_package_family_name_drops_version_and_architecture():
+    from openappx.deploy import package_family_name
+
+    assert (
+        package_family_name("GianlucaMazza.xllama_1.5.2.789_x64__m2dya3r3x66pp")
+        == "GianlucaMazza.xllama__m2dya3r3x66pp"
+    )
+    with pytest.raises(ValueError, match="not a package full name"):
+        package_family_name("nonsense")
+
+
+def test_start_app_sends_the_base64_aumid(portal: DevicePortal):
+    import base64
+
+    portal.start_app("Test_1.0.0.0_x64__abc", "app")
+    expected = base64.b64encode(b"Test__abc!app").decode()
+    assert f"appid={urllib.parse.quote(expected, safe='')}" in RECEIVED["path"]
+
+
+def test_stop_app_targets_the_package(portal: DevicePortal):
+    portal.stop_app("Test_1.0.0.0_x64__abc")
+    assert "package=Test_1.0.0.0_x64__abc" in RECEIVED["deleted"]
+
+
+def test_cli_start_requires_an_app_id(stub: str, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    code = main(["--device", stub, "--user", "admin", "--start", "T_1.0_x64__a"])
+    assert code == 1
+    assert "--app-id" in capsys.readouterr().err
+
+
+def test_cli_start_and_stop(stub: str, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    args = ["--device", stub, "--user", "admin"]
+    assert main([*args, "--start", "T_1.0_x64__a", "--app-id", "app"]) == 0
+    assert "Started" in capsys.readouterr().out
+    assert main([*args, "--stop", "T_1.0_x64__a"]) == 0
+    assert "Stopped" in capsys.readouterr().out

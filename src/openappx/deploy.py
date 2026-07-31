@@ -31,6 +31,7 @@ import base64
 import getpass
 import json
 import os
+import re
 import ssl
 import sys
 import tempfile
@@ -43,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 INSTALL_PATH = "/api/app/packagemanager/package"
+TASKMANAGER_PATH = "/api/taskmanager/app"
 CERTIFICATE_PATH = "/api/app/packagemanager/certificate"
 STATE_PATH = "/api/app/packagemanager/state"
 PACKAGES_PATH = "/api/app/packagemanager/packages"
@@ -55,6 +57,14 @@ CSRF_HEADER = "X-CSRF-Token"
 
 PASSWORD_ENV = "OPENAPPX_DEVICE_PASSWORD"
 DEFAULT_TIMEOUT = 300
+
+
+def package_family_name(package_full_name: str) -> str:
+    """`Name_1.2.3.4_x64__hash` -> `Name__hash`, the identity WDP launches by."""
+    match = re.fullmatch(r"(.+?)_[\d.]+_[^_]*__(.+)", package_full_name)
+    if not match:
+        raise ValueError(f"not a package full name: {package_full_name}")
+    return f"{match.group(1)}__{match.group(2)}"
 
 
 class DeviceError(RuntimeError):
@@ -291,6 +301,28 @@ class DevicePortal:
             state = self.install_state()
         return state
 
+    def start_app(self, package_full_name: str, app_id: str) -> None:
+        """Launch an installed app.
+
+        WDP identifies apps by AUMID — `<PackageFamilyName>!<ApplicationId>`,
+        base64-encoded — where the family name is the full name with the version
+        and architecture removed. The `Id` comes from `<Application Id="...">`
+        in the manifest.
+        """
+        aumid = f"{package_family_name(package_full_name)}!{app_id}"
+        encoded = base64.b64encode(aumid.encode("utf-8")).decode("ascii")
+        request = urllib.request.Request(
+            self._url(TASKMANAGER_PATH, {"appid": encoded}), data=b"", method="POST"
+        )
+        request.add_header("Content-Length", "0")
+        self._open(request)
+
+    def stop_app(self, package_full_name: str) -> None:
+        request = urllib.request.Request(
+            self._url(TASKMANAGER_PATH, {"package": package_full_name}), method="DELETE"
+        )
+        self._open(request)
+
     def uninstall(self, package_full_name: str) -> None:
         request = urllib.request.Request(
             self._url(INSTALL_PATH, {"package": package_full_name}), method="DELETE"
@@ -333,6 +365,12 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--list", action="store_true", help="list installed packages")
     action.add_argument("--uninstall", metavar="PACKAGE_FULL_NAME")
     action.add_argument(
+        "--start",
+        metavar="PACKAGE_FULL_NAME",
+        help="launch an installed app (see --app-id)",
+    )
+    action.add_argument("--stop", metavar="PACKAGE_FULL_NAME")
+    action.add_argument(
         "--install-cert",
         type=Path,
         metavar="CERT.cer",
@@ -345,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
         nargs="*",
         default=[],
         help="dependency packages or a .cer to send alongside",
+    )
+    ap.add_argument(
+        "--app-id",
+        default=None,
+        help="Application/@Id from the manifest, required with --start",
     )
     ap.add_argument("--no-wait", action="store_true", help="do not poll for the result")
     ap.add_argument(
@@ -372,6 +415,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.install_cert:
             portal.install_certificate(args.install_cert)
             print(f"Installed certificate {args.install_cert.name}")
+            return 0
+
+        if args.start:
+            if not args.app_id:
+                raise DeviceError("--start needs --app-id (Application/@Id)")
+            portal.start_app(args.start, args.app_id)
+            print(f"Started {args.start}!{args.app_id}")
+            return 0
+
+        if args.stop:
+            portal.stop_app(args.stop)
+            print(f"Stopped {args.stop}")
             return 0
 
         if args.uninstall is not None:

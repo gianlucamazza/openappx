@@ -66,7 +66,16 @@ Block _hashes_ were already correct: they cover uncompressed data.
       from its published release and installed it on the console. Pack 3.9 s,
       sign 0.6 s, deploy 5.3 s. Doing so also found that `inspect` wrongly
       expected `CodeIntegrity.cat` in the blockmap.
+- [x] `--start` / `--stop` through `/api/taskmanager/app`
 - [ ] Optional: read back `GET /state` phases for progress reporting
+
+### Repackaging
+
+- [x] `openappx unpack` — extract a layout a packer can consume again. Verified
+      by round-tripping a real 19 MB package to byte-identical output.
+- [ ] Launching a repackaged app is unproven: `/api/taskmanager/app` returns
+      `0x8d160120` on this console **for the original Windows-built package too**,
+      so the two are at parity but neither has been seen to run.
 
 ## Later (research, not committed)
 

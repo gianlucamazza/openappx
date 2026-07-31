@@ -127,6 +127,7 @@ openappx pack --root DIR --out FILE.msix [options]
 openappx sign --package FILE.msix --pfx CERT.pfx
 openappx sign --make-test-cert "CN=Publisher" --cert-out mycert
 openappx validate --root DIR      # check a layout before packing
+openappx unpack --package FILE.msix --out DIR
 openappx inspect --package FILE.msix [--json]
 openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
 ```
@@ -236,6 +237,7 @@ openappx/
 │   ├── pack.py        # pack CLI
 │   ├── validate.py    # pre-pack layout checks
 │   ├── inspect.py     # post-pack package checks
+│   ├── unpack.py      # extract a layout back out of a package
 │   ├── deploy.py      # Windows Device Portal client (install/list/uninstall)
 │   ├── sign/          # digests, DER encoder, signature creation
 ├── tests/

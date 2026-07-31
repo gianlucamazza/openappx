@@ -8,8 +8,9 @@ import sys
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: openappx <pack|sign|validate|inspect|deploy> …")
+        print("usage: openappx <pack|unpack|sign|validate|inspect|deploy> …")
         print("  openappx pack --root DIR --out FILE.msix")
+        print("  openappx unpack --package FILE.msix --out DIR")
         print("  openappx sign --package FILE.msix --pfx CERT.pfx")
         print("  openappx validate --root DIR")
         print("  openappx inspect --package FILE.msix [--json]")
@@ -29,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
         from openappx.inspect import main as inspect_main
 
         return inspect_main(rest)
+    if cmd == "unpack":
+        from openappx.unpack import main as unpack_main
+
+        return unpack_main(rest)
     if cmd == "sign":
         from openappx.sign.cli import main as sign_main
 
