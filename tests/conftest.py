@@ -48,3 +48,9 @@ def signed_reference() -> Path:
 def tampered_blockmap() -> Path:
     """Same package with AppxBlockMap.xml altered after signing."""
     return fetch_upstream("SignedTamperedBlockMap-TRUST_E_BAD_DIGEST.appx")
+
+
+@pytest.fixture(scope="session")
+def with_code_integrity() -> Path:
+    """A package carrying AppxMetadata/CodeIntegrity.cat, i.e. an AXCI digest."""
+    return fetch_upstream("SignedTamperedCodeIntegrity-TRUST_E_BAD_DIGEST.appx")

@@ -62,9 +62,10 @@ Block _hashes_ were already correct: they cover uncompressed data.
       deployment. See the table in [signing.md](signing.md).
 - [x] `validate` now catches `runFullTrust` locally, a rule the device reports
       only as `0x80080204` plus a line number
-- [ ] Repackage a real application (xllama) with openappx and install it — the
-      remaining gap is that its layout is produced on a Windows VM, so nothing
-      here has yet packaged a genuine UWP binary
+- [x] **Repackaged a real application** (xllama 1.5.2.789, 47.7 MB of binaries)
+      from its published release and installed it on the console. Pack 3.9 s,
+      sign 0.6 s, deploy 5.3 s. Doing so also found that `inspect` wrongly
+      expected `CodeIntegrity.cat` in the blockmap.
 - [ ] Optional: read back `GET /state` phases for progress reporting
 
 ## Later (research, not committed)

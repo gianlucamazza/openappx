@@ -38,6 +38,29 @@ packages mark every central directory entry as made by version 4.5 and put the
 ZIP64 sentinels (`0xFFFF` / `0xFFFFFFFF`) in the classic EOCD, followed by a
 ZIP64 EOCD record and its locator. `pack_core` does the same.
 
+### A real application, repackaged
+
+The strongest test available: xllama's published release (`xllama_1.5.2.789_x64.msix`,
+47.7 MB of real binaries — `onnxruntime.dll`, `DirectML.dll`, `xllama.exe`, a WinMD)
+was unpacked to a layout, repackaged and signed by openappx on Linux, and installed
+on the console.
+
+```
+pack   47.7 MB layout  → 3.9 s   (19,775,489 bytes, vs 19,747,250 from MakeAppx)
+sign                   → 0.6 s
+deploy + install       → 5.3 s
+```
+
+Only `Identity/@Publisher` was changed, to a certificate we hold the key for. The
+result installs alongside the original as a separate package, since a different
+publisher yields a different package family name. This is the end-to-end
+replacement of MakeAppx + SignTool for a genuine UWP application.
+
+Inspecting that same original package also exposed a bug of ours:
+`AppxMetadata/CodeIntegrity.cat` is deliberately **not** listed in the blockmap —
+the signature covers it through `AXCI` — and `inspect` was reporting it as a
+missing entry.
+
 ### Using it
 
 ```bash

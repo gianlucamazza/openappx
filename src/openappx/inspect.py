@@ -29,10 +29,13 @@ from openappx.sign import RECOMPUTABLE, parse_p7x_digests, signature_problems
 MANIFEST = "AppxManifest.xml"
 BLOCKMAP = "AppxBlockMap.xml"
 CONTENT_TYPES = "[Content_Types].xml"
+CODE_INTEGRITY = "AppxMetadata/CodeIntegrity.cat"
 SIGNATURE = "AppxSignature.p7x"
 
 # Parts the packer generates; they are never listed inside AppxBlockMap.xml.
-GENERATED = (BLOCKMAP, CONTENT_TYPES, SIGNATURE)
+# CodeIntegrity.cat is deliberately absent from the blockmap: the signature
+# covers it separately through the AXCI digest.
+GENERATED = (BLOCKMAP, CONTENT_TYPES, SIGNATURE, CODE_INTEGRITY)
 REQUIRED = (MANIFEST, BLOCKMAP, CONTENT_TYPES)
 
 _METHODS = {zipfile.ZIP_STORED: "store", zipfile.ZIP_DEFLATED: "deflate"}

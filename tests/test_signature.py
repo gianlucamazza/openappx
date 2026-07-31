@@ -195,3 +195,26 @@ def test_streamed_entries_are_refused(tmp_path: Path):
     broken.write_bytes(raw)
     with pytest.raises(ValueError, match="data descriptor"):
         compute_digests(broken)
+
+
+def test_code_integrity_is_not_expected_in_the_blockmap(with_code_integrity: Path):
+    """CodeIntegrity.cat is covered by AXCI, never listed in AppxBlockMap.xml.
+
+    A real package caught this: `inspect` used to report it as a missing entry.
+    """
+    from openappx.inspect import inspect_package
+
+    with zipfile.ZipFile(with_code_integrity) as zf:
+        assert "AppxMetadata/CodeIntegrity.cat" in zf.namelist()
+        assert b"CodeIntegrity" not in zf.read("AppxBlockMap.xml")
+
+    problems = inspect_package(with_code_integrity)["problems"]
+    assert not any("CodeIntegrity" in p and "absent from" in p for p in problems)
+
+
+def test_axci_digest_is_recomputed(with_code_integrity: Path):
+    digests = compute_digests(with_code_integrity)
+    assert "AXCI" in digests
+    with zipfile.ZipFile(with_code_integrity) as zf:
+        expected = hashlib.sha256(zf.read("AppxMetadata/CodeIntegrity.cat")).digest()
+    assert digests["AXCI"] == expected

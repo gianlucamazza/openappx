@@ -5,8 +5,8 @@
 Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI as an alternative pack backend.
 
 > **Status:** experimental (v0), but the whole chain works: **pack → sign →
-> deploy, from Linux, with no Windows tooling**. An Xbox One dev kit installs
-> packages produced entirely by this project. Compiling PE/UWP binaries stays
+> deploy, from Linux, with no Windows tooling**. A real 47 MB UWP application,
+> repackaged and signed by this project, installs on an Xbox One dev kit. Compiling PE/UWP binaries stays
 > **out of scope** (see [Non-goals](#non-goals), [docs/signing.md](docs/signing.md)).
 
 ---
