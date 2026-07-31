@@ -38,6 +38,12 @@ _ZIP64_LOCATOR_SIGNATURE = 0x07064B50
 # EOCD, while entries themselves need only 2.0 features.
 _VERSION_MADE_BY = 45
 _VERSION = 20
+_VERSION_ZIP64 = 45  # entries that need ZIP64 fields must say so
+
+# Values above this need a ZIP64 extra field. Parameterised so tests can drive
+# the ZIP64 path with small files instead of 4 GiB ones.
+_ZIP64_THRESHOLD = 0xFFFFFFFF
+_ZIP64_EXTRA_TAG = 0x0001
 _ZIP64_SENTINEL_32 = 0xFFFFFFFF
 _ZIP64_SENTINEL_16 = 0xFFFF
 _DOS_EPOCH_TIME = 0
@@ -62,10 +68,32 @@ class _Entry:
     flags: int = 0
 
 
+def zip64_local_extra(uncompressed_size: int, compressed_size: int) -> bytes:
+    """The ZIP64 extra field a local header needs, or empty if it fits in 32 bits.
+
+    Order is fixed by the spec: uncompressed size, then compressed size. Callers
+    need its length before writing, because it counts towards `LfhSize` in the
+    blockmap.
+
+    **Appx does not accept this.** A package whose entries carry ZIP64 extra
+    fields is refused at install with `0x8007000B` — measured on an Xbox One dev
+    kit, using a package that installs fine without them. Microsoft's own
+    packages have `extraLen=0` on every record. `pack_python` therefore refuses
+    oversized files outright rather than emitting an archive no device will open;
+    this function stays because the tests pin that behaviour down.
+    """
+    if max(uncompressed_size, compressed_size) <= _ZIP64_THRESHOLD:
+        return b""
+    return struct.pack(
+        "<HHQQ", _ZIP64_EXTRA_TAG, 16, uncompressed_size, compressed_size
+    )
+
+
 def _write_entry(
     out: bytearray, name: str, payload: bytes, plain: bytes, method: int
 ) -> _Entry:
     name_bytes = name.encode("utf-8")
+    extra = zip64_local_extra(len(plain), len(payload))
     entry = _Entry(
         name=name_bytes,
         compressed_size=len(payload),
@@ -75,49 +103,75 @@ def _write_entry(
         offset=len(out),
         flags=0 if name.isascii() else _FLAG_UTF8_NAME,
     )
+    # With a ZIP64 extra field the 32-bit size fields carry sentinels instead.
+    sizes = (
+        (_ZIP64_SENTINEL_32, _ZIP64_SENTINEL_32)
+        if extra
+        else (len(payload), entry.uncompressed_size)
+    )
     out += struct.pack(
         "<IHHHHHIIIHH",
         _LFH_SIGNATURE,
-        _VERSION,
+        _VERSION_ZIP64 if extra else _VERSION,
         entry.flags,
         method,
         _DOS_EPOCH_TIME,
         _DOS_EPOCH_DATE,
         entry.crc,
-        len(payload),
-        entry.uncompressed_size,
+        *sizes,
         len(name_bytes),
-        0,  # no extra field, so LfhSize == 30 + len(name)
+        len(extra),
     )
     out += name_bytes
+    out += extra
     out += payload
     return entry
+
+
+def _zip64_central_extra(entry: _Entry) -> bytes:
+    """ZIP64 extra for a central directory entry: sizes first, then the offset.
+
+    Only the fields that overflow are present, in the spec's fixed order, so the
+    reader can tell them apart by the record's length alone.
+    """
+    values = []
+    if max(entry.uncompressed_size, entry.compressed_size) > _ZIP64_THRESHOLD:
+        values += [entry.uncompressed_size, entry.compressed_size]
+    if entry.offset > _ZIP64_THRESHOLD:
+        values.append(entry.offset)
+    if not values:
+        return b""
+    body = b"".join(struct.pack("<Q", v) for v in values)
+    return struct.pack("<HH", _ZIP64_EXTRA_TAG, len(body)) + body
 
 
 def _write_central_directory(out: bytearray, entries: list[_Entry]) -> None:
     start = len(out)
     for e in entries:
+        extra = _zip64_central_extra(e)
+        big_sizes = max(e.uncompressed_size, e.compressed_size) > _ZIP64_THRESHOLD
         out += struct.pack(
             "<IHHHHHHIIIHHHHHII",
             _CDH_SIGNATURE,
             _VERSION_MADE_BY,
-            _VERSION,  # version needed
+            _VERSION_ZIP64 if extra else _VERSION,
             e.flags,
             e.method,
             _DOS_EPOCH_TIME,
             _DOS_EPOCH_DATE,
             e.crc,
-            e.compressed_size,
-            e.uncompressed_size,
+            _ZIP64_SENTINEL_32 if big_sizes else e.compressed_size,
+            _ZIP64_SENTINEL_32 if big_sizes else e.uncompressed_size,
             len(e.name),
-            0,  # extra length
+            len(extra),
             0,  # comment length
             0,  # disk number
             0,  # internal attributes
             0,  # external attributes
-            e.offset,
+            _ZIP64_SENTINEL_32 if e.offset > _ZIP64_THRESHOLD else e.offset,
         )
         out += e.name
+        out += extra
     size = len(out) - start
 
     # ZIP64 end of central directory, then its locator, then a classic EOCD whose
@@ -166,13 +220,28 @@ def pack_python(root: Path, out_msix: Path) -> Path:
     if not files:
         raise RuntimeError(f"No payload files under {root}")
 
+    for path in files:
+        size = path.stat().st_size
+        if size > _ZIP64_THRESHOLD:
+            raise ValueError(
+                f"{path.name} is {size} bytes: Appx cannot carry a file above "
+                f"{_ZIP64_THRESHOLD} bytes. The ZIP64 record fields that would "
+                "describe it make the package unopenable (0x8007000B), so this "
+                "fails here instead of producing one."
+            )
+
     prepared = [
         prepare_file(package_path(p.relative_to(root)), p.read_bytes()) for p in files
     ]
     entries = [p.blocks for p in prepared]
+    # LfhSize counts the extra field too, so it has to be known before the
+    # blockmap is rendered — hence computing it from the prepared payloads.
     lfh_sizes = {
-        e.name: zip_local_header_size(_zip_name(e.name).encode("utf-8"))
-        for e in entries
+        item.blocks.name: zip_local_header_size(
+            _zip_name(item.blocks.name).encode("utf-8"),
+            zip64_local_extra(item.blocks.size, len(item.payload)),
+        )
+        for item in prepared
     }
 
     blockmap = render_blockmap_xml(entries, lfh_sizes)
@@ -206,6 +275,18 @@ def pack_python(root: Path, out_msix: Path) -> Path:
     return out_msix
 
 
+def _read_zip64_extra(extra: bytes) -> tuple[int, int]:
+    """Uncompressed and compressed size out of a local header's ZIP64 extra."""
+    offset = 0
+    while offset + 4 <= len(extra):
+        tag, size = struct.unpack("<HH", extra[offset : offset + 4])
+        body = extra[offset + 4 : offset + 4 + size]
+        if tag == _ZIP64_EXTRA_TAG and len(body) >= 16:
+            return struct.unpack("<QQ", body[:16])
+        offset += 4 + size
+    raise ValueError("ZIP64 sentinel present but no ZIP64 extra field found")
+
+
 def append_stored_part(archive: bytes, name: str, payload: bytes) -> bytes:
     """Append a stored part and rewrite the central directory.
 
@@ -226,6 +307,11 @@ def append_stored_part(archive: bytes, name: str, payload: bytes) -> bytes:
         )
         if flags & 0x08:
             raise ValueError(f"{name}: archive uses data descriptors; cannot append")
+        if csize == _ZIP64_SENTINEL_32 or size == _ZIP64_SENTINEL_32:
+            extra = archive[
+                offset + 30 + name_len : offset + 30 + name_len + extra_len
+            ]
+            size, csize = _read_zip64_extra(extra)
         entries.append(
             _Entry(
                 name=archive[offset + 30 : offset + 30 + name_len],

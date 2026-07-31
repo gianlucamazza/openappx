@@ -19,6 +19,7 @@ package with one byte altered:
 | signed, ZIP64, one payload byte flipped      | `0x80096010 TRUST_E_BAD_DIGEST` — "the digital signature did not verify" |
 | signed, `Windows.FullTrustApplication` without `runFullTrust` | `0x80080204` — manifest validation error, with a line number |
 | signed, valid manifest, placeholder `app.exe` | `0x80070490 ERROR_NOT_FOUND` — during "Deployment Add" |
+| signed, ZIP64 **extra fields on entries**     | `0x8007000B` again — Appx wants the ZIP64 EOCD but no per-record extras |
 
 Read as a sequence, those rows map the whole validation chain: container →
 signature → blockmap → manifest syntax → manifest semantics → deployment. Each

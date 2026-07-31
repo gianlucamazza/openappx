@@ -77,6 +77,14 @@ Block _hashes_ were already correct: they cover uncompressed data.
       `0x8d160120` on this console **for the original Windows-built package too**,
       so the two are at parity but neither has been seen to run.
 
+### Size limits
+
+- [x] Established that a file above 4 GiB cannot be carried: describing it needs
+      ZIP64 extra fields on the record, and a package with those is refused with
+      `0x8007000B` — measured, using a package that installs without them.
+      `pack` now fails with that explanation instead of emitting one.
+- [ ] `pack` holds the whole archive in memory; fine at 47 MB, not at 2 GB.
+
 ## Later (research, not committed)
 
 - Notes on PE cross-compilation sysroots (documentation only unless a maintainer
