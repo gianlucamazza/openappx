@@ -73,7 +73,8 @@ Block _hashes_ were already correct: they cover uncompressed data.
       sign 0.6 s, deploy 5.3 s. Doing so also found that `inspect` wrongly
       expected `CodeIntegrity.cat` in the blockmap.
 - [x] `--start` / `--stop` through `/api/taskmanager/app`
-- [ ] Optional: read back `GET /state` phases for progress reporting
+- [x] Install phases reported while waiting, so a slow install is
+      distinguishable from a hang
 
 ### Repackaging
 
@@ -90,6 +91,21 @@ Block _hashes_ were already correct: they cover uncompressed data.
       `0x8007000B` — measured, using a package that installs without them.
       `pack` now fails with that explanation instead of emitting one.
 - [ ] `pack` holds the whole archive in memory; fine at 47 MB, not at 2 GB.
+
+## Not done, and why
+
+- **`.msixbundle`** — needed to publish for multiple architectures. Upstream has
+  a reference bundle in its test data, so this is doable the same way everything
+  else here was: copy a working example rather than read the schema. It is the
+  largest remaining piece of work.
+- **Generating `AppxMetadata/CodeIntegrity.cat`** — we verify it (`AXCI`) but do
+  not produce it. It is an Authenticode catalogue, a second format to get right,
+  and only matters where Device Guard is enforced.
+- **Streaming pack** — the archive is assembled in memory. The writer is the
+  most carefully verified code here, so reworking it deserves a session where
+  the result can be re-checked on hardware, not the end of one.
+- **Proving a repackaged app launches** — blocked externally: the console
+  refuses to launch the original Windows-built package too.
 
 ## Later (research, not committed)
 

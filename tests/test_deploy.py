@@ -391,3 +391,13 @@ def test_cli_start_and_stop(stub: str, monkeypatch, capsys):
     assert "Started" in capsys.readouterr().out
     assert main([*args, "--stop", "T_1.0_x64__a"]) == 0
     assert "Stopped" in capsys.readouterr().out
+
+
+def test_wait_reports_each_change_of_phase(portal: DevicePortal):
+    """A long install must be distinguishable from a hang."""
+    seen: list[str] = []
+    RECEIVED["state_status"] = 204  # never finishes
+    portal.wait_for_install(
+        timeout=1, poll=0.05, on_progress=lambda s: seen.append(s.phase)
+    )
+    assert seen == ["installing"]  # reported once, not once per poll

@@ -40,6 +40,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -292,11 +293,23 @@ class DevicePortal:
         self._upload(CERTIFICATE_PATH, [certificate], certificate.name)
 
     def wait_for_install(
-        self, timeout: int = DEFAULT_TIMEOUT, poll: float = 2.0
+        self,
+        timeout: int = DEFAULT_TIMEOUT,
+        poll: float = 2.0,
+        on_progress: Callable[[InstallState], None] | None = None,
     ) -> InstallState:
+        """Poll until the deployment finishes, reporting each change of phase.
+
+        A large package can sit in "installing" for minutes; without a callback
+        the caller has no way to tell that from a hang.
+        """
         deadline = time.monotonic() + timeout
         state = self.install_state()
+        last_phase = None
         while not state.done and time.monotonic() < deadline:
+            if on_progress and state.phase != last_phase:
+                last_phase = state.phase
+                on_progress(state)
             time.sleep(poll)
             state = self.install_state()
         return state
@@ -442,7 +455,10 @@ def main(argv: list[str] | None = None) -> int:
             print("Upload accepted; not waiting for the install to finish.", flush=True)
             return 0
 
-        state = portal.wait_for_install(args.timeout)
+        state = portal.wait_for_install(
+            args.timeout,
+            on_progress=lambda s: print(f"  {s.phase or 'working'} …", flush=True),
+        )
     except DeviceError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
