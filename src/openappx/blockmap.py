@@ -7,9 +7,9 @@ import hashlib
 import os
 import struct
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Sequence, Tuple
 
 BLOCK_SIZE = 64 * 1024
 HASH_METHOD = "http://www.w3.org/2001/04/xmlenc#sha256"
@@ -44,14 +44,14 @@ def package_path(rel: Path) -> str:
     return rel.as_posix().lstrip("/").replace("/", "\\")
 
 
-def hash_file_blocks(data: bytes) -> Tuple[List[bytes], List[int]]:
+def hash_file_blocks(data: bytes) -> tuple[list[bytes], list[int]]:
     """SHA-256 over each uncompressed 64 KiB block.
 
     An empty file has no blocks at all — `<File Name="…" Size="0" LfhSize="…"/>`
     with no children, as produced by Microsoft's own packer.
     """
-    hashes: List[bytes] = []
-    sizes: List[int] = []
+    hashes: list[bytes] = []
+    sizes: list[int] = []
     offset = 0
     while offset < len(data):
         chunk = data[offset : offset + BLOCK_SIZE]
@@ -61,7 +61,7 @@ def hash_file_blocks(data: bytes) -> Tuple[List[bytes], List[int]]:
     return hashes, sizes
 
 
-def deflate_blocks(data: bytes, level: int = 6) -> Tuple[bytes, List[int]]:
+def deflate_blocks(data: bytes, level: int = 6) -> tuple[bytes, list[int]]:
     """Deflate `data` one 64 KiB block at a time.
 
     Returns the raw deflate stream and the compressed length of each block.
@@ -72,7 +72,7 @@ def deflate_blocks(data: bytes, level: int = 6) -> Tuple[bytes, List[int]]:
     """
     compressor = zlib.compressobj(level, zlib.DEFLATED, -zlib.MAX_WBITS)
     stream = bytearray()
-    sizes: List[int] = []
+    sizes: list[int] = []
     for offset in range(0, len(data), BLOCK_SIZE):
         block = compressor.compress(data[offset : offset + BLOCK_SIZE])
         block += compressor.flush(zlib.Z_FULL_FLUSH)
@@ -120,8 +120,8 @@ def read_local_header(archive: bytes, offset: int) -> LocalHeader:
     )
 
 
-def collect_files(root: Path) -> List[Path]:
-    files: List[Path] = []
+def collect_files(root: Path) -> list[Path]:
+    files: list[Path] = []
     for dirpath, _, filenames in os.walk(root):
         for fn in filenames:
             p = Path(dirpath) / fn

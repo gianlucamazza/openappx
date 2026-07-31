@@ -64,5 +64,6 @@ Both checkers return a list of human-readable problem strings rather than raisin
 ## Constraints
 
 - **Zero runtime dependencies.** The default pack path must remain Python-stdlib only; `dev` extras are pytest only. Anything native goes behind the optional `makemsix` backend.
-- **Product-agnostic**: no branding, real app names, or sample IP in `examples/` — `minimal-layout` is a synthetic fixture the tests assert against.
+- **Product-agnostic**: no branding, real app names, or sample IP in `examples/`. `minimal-layout` (desktop, full-trust, placeholder exe) and `resource-only` (installs for real) are both fixtures the tests assert against.
+- Run `ruff check src tests` before committing; config lives in `pyproject.toml`.
 - Never commit `.pfx`/`.p12` material; public `.cer` is fine (see the trust model in `docs/architecture.md`).

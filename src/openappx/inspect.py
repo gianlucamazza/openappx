@@ -18,7 +18,6 @@ import zipfile
 from pathlib import Path
 
 from openappx.blockmap import (
-    BLOCK_SIZE,
     NS,
     hash_file_blocks,
     package_path,
@@ -102,7 +101,7 @@ def _check_blocks(
         )
         return len(blocks)
 
-    for i, (block, digest) in enumerate(zip(blocks, hashes)):
+    for i, (block, digest) in enumerate(zip(blocks, hashes, strict=True)):
         if block.get("Hash") != base64.b64encode(digest).decode("ascii"):
             problems.append(f"{name}: block {i} hash mismatch")
 
@@ -142,7 +141,7 @@ def _check_content_types(data: bytes, names: list[str], problems: list[str]) -> 
 
 
 def inspect_package(pkg: Path) -> dict:
-    """Return a report dict; `report["problems"]` empty means the package is coherent."""
+    """Return a report dict; empty `report["problems"]` means the package coheres."""
     pkg = pkg.resolve()
     if not pkg.is_file():
         raise FileNotFoundError(f"no such package: {pkg}")

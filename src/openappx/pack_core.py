@@ -173,7 +173,9 @@ def pack_python(root: Path, out_msix: Path) -> Path:
 
     archive = bytearray()
     written: list[_Entry] = []
-    for item, plain in zip(prepared, (p.read_bytes() for p in files)):
+    for item, plain in zip(
+        prepared, (p.read_bytes() for p in files), strict=True
+    ):
         written.append(
             _write_entry(
                 archive,

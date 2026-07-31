@@ -74,7 +74,7 @@ def test_blockmap_hashes_cover_uncompressed_blocks(packed: Path):
             hashes, _ = hash_file_blocks(data)
             assert int(el.get("Size")) == len(data)
             assert len(blocks) == len(hashes)
-            for block, digest in zip(blocks, hashes):
+            for block, digest in zip(blocks, hashes, strict=True):
                 assert block.get("Hash") == base64.b64encode(digest).decode()
 
 

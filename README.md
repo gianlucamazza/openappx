@@ -181,10 +181,15 @@ The full loop, entirely from Linux:
 ```bash
 openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
 openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer
-openappx pack --root layout --out app.msix
+openappx pack --root examples/resource-only --out app.msix
 openappx sign --package app.msix --pfx mycert.pfx
 openappx deploy --device https://<ip>:11443 --user NAME --package app.msix
 ```
+
+`examples/resource-only/` is the layout this loop was verified with: it installs
+on an Xbox One dev kit. `examples/minimal-layout/` shows a desktop full-trust
+manifest instead, and deliberately ships a placeholder executable, so it packs
+and signs but stops at the deployment stage.
 
 Signing needs `pip install 'openappx[sign]'`; everything else is stdlib-only.
 [docs/signing.md](docs/signing.md) has the format details and the console
@@ -235,7 +240,10 @@ openappx/
 │   ├── sign/          # digests, DER encoder, signature creation
 ├── tests/
 ├── scripts/
-└── examples/minimal-layout/
+├── examples/
+│   ├── minimal-layout/   # desktop, full-trust; not installable (placeholder exe)
+│   └── resource-only/    # installs on a device — used to prove the chain
+└── CHANGELOG.md
 ```
 
 ---

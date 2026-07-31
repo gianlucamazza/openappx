@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A resource-only package: no <Applications>, so it carries no executable and
+  nothing has to be a loadable PE. This is the layout used to prove the chain
+  end to end: packed and signed by openappx on Linux, it installs on an Xbox
+  One dev kit. See docs/signing.md.
+
+  Identity/@Publisher must equal the subject of the signing certificate, which
+  `openappx sign` can mint for you.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap">
+
+  <Identity
+    Name="OpenAppx.ResourceOnly"
+    Publisher="CN=OpenAppx-Example"
+    Version="0.1.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>openappx resource-only example</DisplayName>
+    <PublisherDisplayName>openappx</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0"
+                        MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+</Package>

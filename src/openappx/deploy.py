@@ -104,8 +104,20 @@ class DevicePortal:
         )
         self.password = password
         self.timeout = timeout
-        self.context = ssl._create_unverified_context() if insecure else None
+        self.context = self._tls_context() if insecure else None
         self._csrf_token: str | None = None
+
+    @staticmethod
+    def _tls_context() -> ssl.SSLContext:
+        """Accept the device's self-signed certificate, deliberately and visibly.
+
+        Built from the public API rather than `ssl._create_unverified_context()`,
+        so what is being switched off is spelled out.
+        """
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
 
     @staticmethod
     def _normalise(base_url: str) -> str:
@@ -114,7 +126,7 @@ class DevicePortal:
         return base_url.rstrip("/")
 
     def _auth_header(self) -> str:
-        raw = f"{self.username}:{self.password}".encode("utf-8")
+        raw = f"{self.username}:{self.password}".encode()
         return "Basic " + base64.b64encode(raw).decode("ascii")
 
     def _fetch_csrf_token(self) -> str | None:

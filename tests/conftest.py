@@ -40,7 +40,7 @@ def fetch_upstream(name: str) -> Path:
 
 @pytest.fixture(scope="session")
 def signed_reference() -> Path:
-    """A genuinely Microsoft-signed package (its cert chain is untrusted, digests are valid)."""
+    """Microsoft-signed: the cert chain is untrusted, but the digests are valid."""
     return fetch_upstream("SignedUntrustedCert-CERT_E_CHAINING.appx")
 
 

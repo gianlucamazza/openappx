@@ -142,7 +142,8 @@ def test_structure_matches_a_microsoft_package(signed: Path, signed_reference: P
     # The SpcIndirectDataContent (SIP info + digest blob) is fixed-size here:
     # both carry four digests, so the encodings must agree byte-for-byte except
     # for the hashes themselves.
-    marker = b"\x06\x0a\x2b\x06\x01\x04\x01\x82\x37\x02\x01\x1e"  # OID 1.3.6.1.4.1.311.2.1.30
+    # OID 1.3.6.1.4.1.311.2.1.30, the Appx SIP marker
+    marker = b"\x06\x0a\x2b\x06\x01\x04\x01\x82\x37\x02\x01\x1e"
     assert marker in ours and marker in theirs
     ours_sip = ours[ours.index(marker) : ours.index(marker) + 41]
     theirs_sip = theirs[theirs.index(marker) : theirs.index(marker) + 41]
@@ -160,7 +161,7 @@ def test_certificate_can_be_password_protected(tmp_path: Path):
         PUBLISHER, tmp_path / "b.pfx", tmp_path / "b.cer", password="secret"
     )
     assert load_pfx(pfx, "secret").subject_rfc4514 == PUBLISHER
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="Invalid password"):
         load_pfx(pfx)
 
 

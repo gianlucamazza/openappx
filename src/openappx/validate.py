@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -31,9 +32,26 @@ def layout_problems(root: Path) -> list[str]:
         if not p.is_file():
             problems.append(f"manifest asset missing: {asset}")
 
+    problems += _wellformed_problems(text)
     problems += _identity_problems(text)
     problems += _capability_problems(text)
     return problems
+
+
+def _wellformed_problems(text: str) -> list[str]:
+    """Reject XML a device would reject, while the rest of this module stays lax.
+
+    Everything else here greps deliberately, so a broken manifest can still be
+    reported rather than crashing the tool. Well-formedness is different: a
+    device answers `0xC00CEE23` with a line and column and no explanation, and
+    the rules are stricter than they look — `--` inside a comment is invalid XML,
+    for instance, which is easy to introduce while documenting a manifest.
+    """
+    try:
+        ET.fromstring(text)
+    except ET.ParseError as e:
+        return [f"AppxManifest.xml is not well-formed XML: {e}"]
+    return []
 
 
 def _identity_attribute(text: str, attribute: str) -> str | None:

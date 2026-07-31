@@ -70,3 +70,37 @@ def test_missing_identity_attributes_are_reported(tmp_path: Path):
     assert any("Identity/@Publisher missing" in p for p in problems)
     assert any("Identity/@Version missing" in p for p in problems)
     assert not any("Identity/@Name missing" in p for p in problems)
+
+
+RESOURCE_ONLY = REPO / "examples" / "resource-only"
+
+
+def test_resource_only_example_is_valid():
+    """The example the README points at as installable must stay installable."""
+    assert layout_problems(RESOURCE_ONLY) == []
+
+
+def test_resource_only_example_has_no_executable():
+    import xml.etree.ElementTree as ET
+
+    ns = "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
+    root = ET.parse(RESOURCE_ONLY / "AppxManifest.xml").getroot()
+    assert root.find(f"{ns}Applications") is None  # the element, not the comment
+    assert root.find(f".//{ns}TargetDeviceFamily").get("Name") == "Windows.Universal"
+
+
+def test_example_manifests_are_well_formed_xml():
+    """XML forbids `--` inside comments; a device reports that as 0xC00CEE23."""
+    import xml.etree.ElementTree as ET
+
+    for layout in (EXAMPLE, RESOURCE_ONLY):
+        ET.parse(layout / "AppxManifest.xml")
+
+
+def test_malformed_xml_is_reported(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<?xml version="1.0"?><!-- a --b --><Package/>', encoding="utf-8"
+    )
+    assert any("not well-formed" in p for p in layout_problems(layout))

@@ -243,14 +243,14 @@ def make_test_certificate(
     device rejects the package however valid the signature is.
     """
     hashes, serialization, _padding, _pkcs12 = _require_cryptography()
+    # Fixed validity: these scripts must not depend on wall-clock reproducibility
+    # traps, and a dev certificate has no business being long-lived.
+    import datetime
+
     from cryptography import x509
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives.serialization import pkcs12
     from cryptography.x509.oid import ExtendedKeyUsageOID
-
-    # Fixed validity: these scripts must not depend on wall-clock reproducibility
-    # traps, and a dev certificate has no business being long-lived.
-    import datetime
 
     name = x509.Name.from_rfc4514_string(publisher)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

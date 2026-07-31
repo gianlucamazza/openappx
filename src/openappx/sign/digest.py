@@ -1,7 +1,7 @@
 """Appx signature digests: the `APPX` blob inside AppxSignature.p7x.
 
-Layout, as implemented by microsoft/msix-packaging (`src/inc/internal/AppxSignature.hpp`,
-`src/msix/PAL/Signature/OpenSSL/SignatureValidator.cpp`):
+Layout, as implemented by microsoft/msix-packaging
+(`src/inc/internal/AppxSignature.hpp`, `SignatureValidator.cpp`):
 
     AppxSignature.p7x = b"PKCX" + PKCS#7 SignedData (DER)
 
@@ -28,7 +28,6 @@ either (`AppxSignature.cpp`: "TODO: unnamed stream for central directory?").
 from __future__ import annotations
 
 import hashlib
-import struct
 import zipfile
 from pathlib import Path
 
