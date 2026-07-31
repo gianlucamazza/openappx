@@ -2,6 +2,54 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## 0.5.0 — 2026-08-01
+
+### Added
+
+- `openappx unpack` — extract a layout a packer can consume again, the missing
+  half of repackaging. Round-trips a real 19 MB package to byte-identical
+  output. Archive member names are validated, so a crafted package cannot write
+  outside the destination.
+- `openappx deploy --start/--stop` — launch and stop apps through
+  `/api/taskmanager/app`.
+- [docs/format.md](docs/format.md) — the container and blockmap rules in one
+  place, each with the measurement that established it.
+- `CONTRIBUTING.md`, `SECURITY.md`, Dependabot, `.editorconfig`.
+
+### Fixed
+
+- **Non-ASCII entry names were corrupted.** Names were written as UTF-8 without
+  flag bit 11, so every reader decoded them as CP437: `città-日本.png` became
+  `citt├á-µùÑµ£¼.png`.
+- **Files above 4 GiB now fail with an explanation.** Describing one needs ZIP64
+  extra fields on the record, and a package carrying those is refused by a
+  device with `0x8007000B` — the same code a ZIP32 archive gets, measured
+  against a package that installs without them. Appx wants the ZIP64
+  end-of-central-directory and nothing on the entries.
+- Nine type errors, mypy never having been run: a dataclass holding the
+  certificate and private key as bare `object`, and a check that summed values
+  it had just established could be `None`.
+- An empty `--uninstall` value fell through to the install branch and crashed.
+
+### Testing and CI
+
+- The two command-line entry points had no tests at all; they now have 26.
+  Coverage 90% → 95%, tests 106 → 170.
+- CI installs `[dev,sign]` — without it every signature test skipped itself —
+  and now runs ruff, mypy and a coverage gate.
+- `actions/checkout` v4 → v5, `setup-python` v5 → v6, Python matrix gains 3.14.
+- The makemsix backend, previously the only code nobody had ever run, is covered
+  by a stub binary.
+
+### Known limits
+
+- A repackaged application has been proven to **install**, not to **run**:
+  launching it fails on the console, but so does the original Windows-built
+  package, so the two are at parity and neither has been seen to start.
+- No timestamping, so signatures expire with the certificate.
+- No `.msixbundle`, and `CodeIntegrity.cat` is read but not generated.
+- `pack` holds the archive in memory; fine at 47 MB, not at 2 GB.
+
 ## 0.4.0 — 2026-08-01
 
 The whole chain now works from Linux, with no Windows tooling: **pack → sign →

@@ -12,8 +12,8 @@ L7  Deploy helpers
 L6  Sign
       openappx.sign — creates and verifies AppxSignature.p7x. Creation
       needs the optional [sign] extra; the DER encoding is ours.
-L5  Pack
-      blockmap + content types + OPC zip  ← v0 focus
+L5  Pack / unpack
+      blockmap + content types + OPC zip; unpack reverses it
 L4  Validate
       manifest/layout checks before pack
 L3  Layout (input contract)
@@ -33,6 +33,7 @@ L1  Target platform (not openappx)
 | `openappx.pack_core` | Pack backends: `python`, `makemsix`                                       |
 | `openappx.pack`      | CLI over `pack_core`                                                      |
 | `openappx.inspect`   | Package / blockmap coherence checks (**after** pack)                      |
+| `openappx.unpack`    | Extract a layout back out of a package                                    |
 | `openappx.sign`      | `AppxSignature.p7x`: digests, DER encoding, signing, verification          |
 | `openappx.deploy`    | Windows Device Portal client (install / list / uninstall / trust a cert)   |
 

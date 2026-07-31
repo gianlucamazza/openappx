@@ -45,6 +45,8 @@ Both checkers return a list of human-readable problem strings rather than raisin
 
 ### Format invariants (easy to break, hard to notice)
 
+`docs/format.md` is the full list with the evidence for each; the highlights follow.
+
 - **Two path spellings for the same file.** `package_path()` produces backslash names (`Assets\StoreLogo.png`) used in `AppxBlockMap.xml` and in `SKIP_NAMES`; `_zip_name()` converts back to forward slashes for the actual ZIP entry. Any new code touching names must pick the right one.
 - **XML is rendered as byte strings, not ElementTree** — CRLF line endings, UTF-8, fixed attribute order. Blockmap/content-types bytes are compared against reference tooling, so don't "clean this up" with a serializer.
 - **`LfhSize` is computed, not measured**: `30 + len(utf8_name)`, valid only because the writer emits no extra fields. `tests/test_format.py::test_lfh_size_matches_written_headers` parses the real headers back to keep that honest.

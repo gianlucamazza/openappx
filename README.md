@@ -67,7 +67,10 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 └─────────────────────────────────────────────────────────────┘
 ```
 
-See [docs/architecture.md](docs/architecture.md) for layers and extension points (sign, deploy, future cross-ABI).
+See [docs/architecture.md](docs/architecture.md) for the layers and extension
+points, and [docs/format.md](docs/format.md) for the container and blockmap rules
+— each recorded with the measurement that established it, since several are not
+what the specification suggests.
 
 ---
 
@@ -249,6 +252,17 @@ openappx/
 ```
 
 ---
+
+## Known limits
+
+| Limit | Detail |
+|-------|--------|
+| Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation. |
+| Memory | `pack` builds the archive in memory: fine for tens of MB, not for GB. |
+| Running an app | Packages are proven to **install**; launching a repackaged app is unverified (the original Windows-built package fails to launch the same way on the test console). |
+| Timestamping | Not implemented, so signatures expire with the certificate. |
+| Bundles | No `.msixbundle` support. `CodeIntegrity.cat` is verified but not generated. |
+| Certificate trust | `inspect` proves a package matches its own signature — not that the certificate is trusted, unexpired, or matches the publisher. |
 
 ## Roadmap
 
