@@ -4,10 +4,10 @@
 
 Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI as an alternative pack backend.
 
-> **Status:** experimental (v0). Pack, blockmap, layout validation, package
-> inspection and signature *verification* work. Creating signatures and compiling
-> PE/UWP binaries are **out of scope for v0** (see [Non-goals](#non-goals),
-> [docs/signing.md](docs/signing.md) and [docs/roadmap.md](docs/roadmap.md)).
+> **Status:** experimental (v0), but the whole chain works: **pack → sign →
+> deploy, from Linux, with no Windows tooling**. An Xbox One dev kit installs
+> packages produced entirely by this project. Compiling PE/UWP binaries stays
+> **out of scope** (see [Non-goals](#non-goals), [docs/signing.md](docs/signing.md)).
 
 ---
 
@@ -16,6 +16,7 @@ Build and inspect Windows app packages from a POSIX host without Visual Studio f
 | You have                                                           | openappx gives you                                                                     |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | A **layout directory** (manifest, assets, binaries, payload files) | A valid **`.msix` / Appx-style ZIP** with `AppxBlockMap.xml` and `[Content_Types].xml` |
+| A code-signing certificate (or none — one can be minted)           | A **signed** `.msix` that a real device installs                                       |
 | A signed `.msix` from anyone                                       | Verification that the package matches the digests its signature covers                 |
 | CI on Linux                                                        | Deterministic pack tests without Windows                                               |
 
@@ -28,6 +29,7 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 - Pack an Appx/MSIX layout on Linux, macOS, or any host with Python 3.10+
 - Generate a conformant `AppxBlockMap` (64 KiB SHA-256 blocks, compressed block
   sizes) — checked against Microsoft-signed reference packages, not guessed
+- Sign packages without Windows, and prove it by installing them on a device
 - Validate common layout mistakes before pack (missing `AppxManifest.xml`, missing `Executable`, missing logos)
 - Stay **dependency-light** (default path: Python standard library only)
 - Produce **byte-reproducible** packages (fixed timestamps; same layout → same `.msix`)
@@ -56,7 +58,7 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 ┌─────────────────────────────────────────────────────────────┐
 │  openappx                                                   │
 │  validate → blockmap → content types → zip (.msix)          │
-│  [optional] makemsix backend (also unsigned — see signing.md)│
+│  [optional] sign → AppxSignature.p7x → deploy to a device   │
 └────────────────────────────┬────────────────────────────────┘
                              │ .msix
                              ▼
@@ -107,7 +109,7 @@ openappx **writes** (do not pre-seed):
 
 - `[Content_Types].xml`
 - `AppxBlockMap.xml`
-- `AppxSignature.p7x` is **never** written: no backend can sign ([docs/signing.md](docs/signing.md))
+- `AppxSignature.p7x` — written by `openappx sign`, never by `pack`
 
 ---
 
@@ -122,6 +124,8 @@ openappx pack --root DIR --out FILE.msix [options]
 ```
 
 ```text
+openappx sign --package FILE.msix --pfx CERT.pfx
+openappx sign --make-test-cert "CN=Publisher" --cert-out mycert
 openappx validate --root DIR      # check a layout before packing
 openappx inspect --package FILE.msix [--json]
 openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
@@ -171,10 +175,20 @@ openappx deploy --device https://192.168.1.50:11443 --user devuser \
 - `--list` shows installed packages, `--uninstall PACKAGE_FULL_NAME` removes one,
   `--install-cert CERT.cer` trusts a certificate on the device.
 
-**Sideloading requires a signed package.** The device only installs packages
-signed by a certificate it trusts, which is why `--install-cert` exists — and
-why openappx alone is not yet enough to get an app onto a console from Linux.
-See [docs/signing.md](docs/signing.md).
+**Sideloading requires a signed package** and a certificate the device trusts.
+The full loop, entirely from Linux:
+
+```bash
+openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
+openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer
+openappx pack --root layout --out app.msix
+openappx sign --package app.msix --pfx mycert.pfx
+openappx deploy --device https://<ip>:11443 --user NAME --package app.msix
+```
+
+Signing needs `pip install 'openappx[sign]'`; everything else is stdlib-only.
+[docs/signing.md](docs/signing.md) has the format details and the console
+responses that verify each step.
 
 Exit codes: `0` success, `1` failure (pack error, a failed deploy, or problems
 found by `validate` / `inspect`), `2` bad usage or an unreadable input.
@@ -218,7 +232,7 @@ openappx/
 │   ├── validate.py    # pre-pack layout checks
 │   ├── inspect.py     # post-pack package checks
 │   ├── deploy.py      # Windows Device Portal client (install/list/uninstall)
-│   └── sign/          # signature digests: parse + verify (no signing)
+│   ├── sign/          # digests, DER encoder, signature creation
 ├── tests/
 ├── scripts/
 └── examples/minimal-layout/

@@ -10,8 +10,8 @@ L7  Deploy helpers
       IoT, desktop). Doubles as the only end-to-end validator we have:
       the device accepts the package or explains why not.
 L6  Sign
-      AppxSignature.p7x — verification implemented, creation is not
-      (needs CMS/ASN.1; makemsix cannot sign either)
+      openappx.sign — creates and verifies AppxSignature.p7x. Creation
+      needs the optional [sign] extra; the DER encoding is ours.
 L5  Pack
       blockmap + content types + OPC zip  ← v0 focus
 L4  Validate

@@ -29,7 +29,17 @@ def _zip_name(pkg_path: str) -> str:
 _LFH_SIGNATURE = 0x04034B50
 _CDH_SIGNATURE = 0x02014B50
 _EOCD_SIGNATURE = 0x06054B50
-_VERSION = 20  # 2.0 — deflate, no zip64
+_ZIP64_EOCD_SIGNATURE = 0x06064B50
+_ZIP64_LOCATOR_SIGNATURE = 0x07064B50
+
+# Appx archives are ZIP64: Windows fails to open the package otherwise
+# (0x8007000B at install time). Microsoft's own packages mark every central
+# directory entry as made by 4.5 and put the ZIP64 sentinels in the classic
+# EOCD, while entries themselves need only 2.0 features.
+_VERSION_MADE_BY = 45
+_VERSION = 20
+_ZIP64_SENTINEL_32 = 0xFFFFFFFF
+_ZIP64_SENTINEL_16 = 0xFFFF
 _DOS_EPOCH_TIME = 0
 _DOS_EPOCH_DATE = 0x0021  # 1980-01-01, so output stays byte-reproducible
 _METHOD_STORE = 0
@@ -39,7 +49,7 @@ _METHOD_DEFLATE = 8
 @dataclass(frozen=True)
 class _Entry:
     name: bytes  # UTF-8, forward slashes
-    payload: bytes
+    compressed_size: int
     uncompressed_size: int
     method: int
     crc: int
@@ -52,7 +62,7 @@ def _write_entry(
     name_bytes = name.encode("utf-8")
     entry = _Entry(
         name=name_bytes,
-        payload=payload,
+        compressed_size=len(payload),
         uncompressed_size=len(plain),
         method=method,
         crc=zlib.crc32(plain) & 0xFFFFFFFF,
@@ -83,14 +93,14 @@ def _write_central_directory(out: bytearray, entries: list[_Entry]) -> None:
         out += struct.pack(
             "<IHHHHHHIIIHHHHHII",
             _CDH_SIGNATURE,
-            _VERSION,  # version made by
+            _VERSION_MADE_BY,
             _VERSION,  # version needed
             0,  # flags
             e.method,
             _DOS_EPOCH_TIME,
             _DOS_EPOCH_DATE,
             e.crc,
-            len(e.payload),
+            e.compressed_size,
             e.uncompressed_size,
             len(e.name),
             0,  # extra length
@@ -102,15 +112,39 @@ def _write_central_directory(out: bytearray, entries: list[_Entry]) -> None:
         )
         out += e.name
     size = len(out) - start
+
+    # ZIP64 end of central directory, then its locator, then a classic EOCD whose
+    # fields are all sentinels — the layout Microsoft's packages use.
+    zip64_eocd = len(out)
     out += struct.pack(
-        "<IHHHHIIH",
-        _EOCD_SIGNATURE,
+        "<IQHHIIQQQQ",
+        _ZIP64_EOCD_SIGNATURE,
+        44,  # size of the remainder of this record
+        _VERSION_MADE_BY,
+        _VERSION_MADE_BY,
         0,  # this disk
         0,  # disk with central directory
         len(entries),
         len(entries),
         size,
         start,
+    )
+    out += struct.pack(
+        "<IIQI",
+        _ZIP64_LOCATOR_SIGNATURE,
+        0,  # disk with the ZIP64 EOCD
+        zip64_eocd,
+        1,  # total disks
+    )
+    out += struct.pack(
+        "<IHHHHIIH",
+        _EOCD_SIGNATURE,
+        0,  # this disk
+        0,  # disk with central directory
+        _ZIP64_SENTINEL_16,
+        _ZIP64_SENTINEL_16,
+        _ZIP64_SENTINEL_32,
+        _ZIP64_SENTINEL_32,
         0,  # comment length
     )
 
@@ -161,6 +195,47 @@ def pack_python(root: Path, out_msix: Path) -> Path:
     out_msix.parent.mkdir(parents=True, exist_ok=True)
     out_msix.write_bytes(bytes(archive))
     return out_msix
+
+
+def append_stored_part(archive: bytes, name: str, payload: bytes) -> bytes:
+    """Append a stored part and rewrite the central directory.
+
+    Used to insert `AppxSignature.p7x`, which must be the last record: the
+    signature covers every byte before its own local header (AXPC) and the
+    central directory as it stood beforehand (AXCD), so it can only be added
+    after everything else is final.
+
+    Existing local records keep their offsets, so their central directory
+    entries are copied through verbatim.
+    """
+    entries: list[_Entry] = []
+    offset = 0
+    while archive[offset : offset + 4] == struct.pack("<I", _LFH_SIGNATURE):
+        header = struct.unpack("<IHHHHHIIIHH", archive[offset : offset + 30])
+        _sig, _ver, flags, method, _t, _d, crc, csize, size, name_len, extra_len = (
+            header
+        )
+        if flags & 0x08:
+            raise ValueError(f"{name}: archive uses data descriptors; cannot append")
+        entries.append(
+            _Entry(
+                name=archive[offset + 30 : offset + 30 + name_len],
+                compressed_size=csize,
+                uncompressed_size=size,
+                method=method,
+                crc=crc,
+                offset=offset,
+            )
+        )
+        offset += 30 + name_len + extra_len + csize
+
+    if not entries:
+        raise ValueError("archive has no local file records")
+
+    out = bytearray(archive[:offset])  # file records, central directory dropped
+    entries.append(_write_entry(out, name, payload, payload, _METHOD_STORE))
+    _write_central_directory(out, entries)
+    return bytes(out)
 
 
 def pack_makemsix(root: Path, out_msix: Path, makemsix_bin: Path) -> Path:

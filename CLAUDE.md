@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it does **not** compile PE binaries, and signature *creation* is deliberately out of scope (v0) — reading and verifying signatures is implemented. See `docs/roadmap.md` for what is committed vs. research.
+`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it packs, signs and deploys without Windows tooling; it does **not** compile PE binaries. See `docs/roadmap.md` for what is committed vs. research.
 
 ## Commands
 
@@ -39,7 +39,7 @@ Entry points fan out, logic lives in leaf modules:
 - `validate.py` — `layout_problems(root) -> list[str]`, run **before** pack on a possibly-broken layout.
 - `inspect.py` — `inspect_package(msix) -> dict`, run **after** pack on a finished archive; recomputes every block hash from stored bytes. Keep the two apart: `validate` must tolerate garbage input, `inspect` must not.
 - `deploy.py` — Windows Device Portal REST client. Details that were established against a working client (`../xllama/scripts/deploy.sh`), not guessed: every uploaded part goes under the form field name **`file`** (the file's own name goes in the `package=` query parameter); CSRF uses the cookie-to-header handshake (`CSRF-Token` cookie → `X-CSRF-Token`), with `auto-<username>` as an opt-in alternative; `GET /state` returns **204 while installing**, 404 when nothing was deployed, 200 with the result; `Success: false` in that result means failure even when `Code` is 0. `--insecure` is required because devices serve self-signed certificates. Installing touches someone's hardware: never pick a target device implicitly, and never uninstall as a side effect of installing.
-- `sign/` — `digest.py` parses `AppxSignature.p7x` and recomputes the digests a signature covers. Reading and verifying works; **creating** a signature does not and cannot without ASN.1+RSA. `docs/signing.md` has the verified format notes; read it before touching anything signature-shaped.
+- `sign/` — `digest.py` (parse/recompute the digests a signature covers), `asn1.py` (a small DER encoder), `signer.py` (build the CMS structure and attach it), `cli.py`. Signing needs the optional `[sign]` extra; everything else stays stdlib-only. **Read `docs/signing.md` before touching anything signature-shaped** — every structure there was copied from a real Microsoft signature and confirmed by a console accepting or rejecting a package, not derived from the spec.
 
 Both checkers return a list of human-readable problem strings rather than raising; an empty list means "coherent". New checks append to that list — that is the extension point in each.
 
@@ -51,6 +51,7 @@ Both checkers return a list of human-readable problem strings rather than raisin
 - `[Content_Types].xml` and `AppxBlockMap.xml` are always STORED, so a reader can reach them without inflating.
 - **Output is byte-reproducible**: timestamps are hard-coded to the 1980 DOS epoch. Never stamp wall-clock time into an entry.
 - **Block hashes cover uncompressed data; `Block/@Size` is the *compressed* length** of that 64 KiB block, omitted entirely for stored parts, and an empty file has zero blocks. All three were established against a Microsoft-signed package, not inferred — `tests/test_signature.py` re-checks them on every run.
+- **Appx archives must be ZIP64** — `vMade=45` on every central directory entry, ZIP64 EOCD + locator, and `0xFFFF`/`0xFFFFFFFF` sentinels in the classic EOCD. This is not about size: a ZIP32 package fails to open on a device with `0x8007000B`, whatever it contains.
 - **The archive is written by hand** (`pack_core.py`: `_write_entry`, `_write_central_directory`). This is not gratuitous: reporting per-block compressed sizes means feeding a pre-built deflate stream (`blockmap.deflate_blocks`, `Z_FULL_FLUSH` per block) into each entry, which `zipfile.writestr` cannot express. Writing it ourselves also pins `LfhSize` (no extra fields) and the 1980 timestamps that make output reproducible.
 - Payload is deflated only when compression actually shrinks it; otherwise it is stored, and then `Block/@Size` must be absent.
 - **Generated parts are never read as payload**: `SKIP_NAMES` in `blockmap.py` guards against a re-pack picking up a previous run's output.

@@ -362,7 +362,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Installed certificate {args.install_cert.name}")
             return 0
 
-        if args.uninstall:
+        if args.uninstall is not None:
+            if not args.uninstall.strip():
+                raise DeviceError("--uninstall needs a PackageFullName")
             portal.uninstall(args.uninstall)
             print(f"Removed {args.uninstall}")
             return 0

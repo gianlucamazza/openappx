@@ -24,6 +24,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+# Signature *creation* only; reading, verifying and packing stay stdlib-only.
+sign = ["cryptography>=41.0"]
 
 [project.scripts]
 openappx = "openappx.cli:main"

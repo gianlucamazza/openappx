@@ -1,10 +1,55 @@
 # Signing
 
-**Status: openappx can read and verify Appx signatures. It cannot create them.**
+This document records what was established by reading the upstream MSIX SDK, by
+dissecting Microsoft-signed packages, and by testing against a real console — so
+the next person does not have to repeat it.
 
-This document records what was established by reading the upstream MSIX SDK and
-by dissecting Microsoft-signed packages, so the next person does not have to
-repeat it.
+## Status: signing works, and a console accepts it
+
+`openappx sign` produces `AppxSignature.p7x` on Linux with no Windows tooling.
+The proof is not that the code runs — it is that an Xbox One dev kit installed
+a package packed *and* signed entirely by this project, and rejected the same
+package with one byte altered:
+
+| Package                                    | Console response |
+| ------------------------------------------ | ---------------- |
+| unsigned                                    | `0x800B0100 TRUST_E_NOSIGNATURE` — "must be digitally signed" |
+| signed, ZIP32                               | `0x8007000B ERROR_BAD_FORMAT` — "opening the package failed" |
+| signed, ZIP64                               | **installed successfully** |
+| signed, ZIP64, one payload byte flipped     | `0x80096010 TRUST_E_BAD_DIGEST` — "the digital signature did not verify" |
+
+The last two rows are what matter: Windows opened the container, parsed the CMS
+structure, verified the RSA signature and checked the digests against the actual
+bytes. It rejected exactly the two digests (`AXPC`, `AXBM`) that
+`openappx inspect` independently flagged.
+
+**Appx archives must be ZIP64.** This is not optional and not about size: a
+ZIP32 archive of the same package fails to open with `0x8007000B`. Microsoft's
+packages mark every central directory entry as made by version 4.5 and put the
+ZIP64 sentinels (`0xFFFF` / `0xFFFFFFFF`) in the classic EOCD, followed by a
+ZIP64 EOCD record and its locator. `pack_core` does the same.
+
+### Using it
+
+```bash
+# 1. A certificate whose subject equals Identity/@Publisher in the manifest
+openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
+
+# 2. Trust it on the device (once)
+openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer
+
+# 3. Pack, sign, deploy
+openappx pack --root layout --out app.msix
+openappx sign --package app.msix --pfx mycert.pfx
+openappx deploy --device https://<ip>:11443 --user NAME --package app.msix
+```
+
+Signing needs the optional extra: `pip install 'openappx[sign]'`. Packing,
+inspecting and verifying remain dependency-free.
+
+The certificate subject must match `Identity/@Publisher` **exactly**, and the
+device must already trust the certificate — those are two separate failures with
+unhelpful error codes, so check both before debugging anything else.
 
 ## Sideloading requires a signature — measured, not assumed
 
@@ -36,7 +81,7 @@ Uploading an unsigned openappx package to an Xbox One in Developer Mode
 | Question                       | Answer                                                                                                                                     |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Can `makemsix` sign a package? | **No.** `makemsix pack` accepts only `-d` and `-p`. Upstream ships `SignatureValidator`, no signature _creator_.                           |
-| Can openappx sign?             | No. It would need CMS/PKCS#7 + ASN.1 + RSA — none in the standard library.                                                                 |
+| Can openappx sign?             | **Yes**, via `openappx sign` with the optional `[sign]` extra (`cryptography` for RSA and PKCS#12; the DER encoding is ours). |
 | What can openappx do?          | Parse `AppxSignature.p7x`, recompute the digests it covers, and report tampering.                                                          |
 | What does verification prove?  | That the package matches what its signature covers — **not** that the certificate is trusted, unexpired, or matches `Identity/@Publisher`. |
 
@@ -89,16 +134,19 @@ marker rather than parsing ASN.1 (`SignatureValidator.cpp`, `ReadDigestHashes`).
 6. `Identity/@Publisher` in `AppxManifest.xml` must match the certificate subject
    exactly, or Windows rejects the package regardless of signature validity.
 
-Step 4 is the blocker: it needs an ASN.1 encoder and a signing primitive. Adding
-`cryptography` (or `asn1crypto`) as an **optional** extra would make it feasible
-without touching the dependency-free pack path. That decision is open — see the
-v0.3 roadmap entry.
+All six steps are implemented in `openappx.sign.signer`. Two hashing rules are
+easy to get silently wrong, and both were confirmed against a real signature:
+
+- the signed attributes' `messageDigest` covers the **content** of the
+  `SpcIndirectDataContent` SEQUENCE, without its own tag and length;
+- the RSA signature covers those attributes encoded as a `SET` (tag `0x31`), not
+  with the `[0] IMPLICIT` tag they carry inside the `SignerInfo`.
 
 ## Practical options today
 
 - **Windows**: `signtool sign /fd SHA256 /a /f cert.pfx /p <password> package.msix`
-- **Linux**: no maintained open-source signer exists. `osslsigncode` handles PE
-  and MSI, not Appx.
+- **Linux**: `openappx sign` (this project). `osslsigncode` handles PE and MSI,
+  not Appx.
 - **Verification anywhere**: `openappx inspect --package FILE.msix` reports which
   digests are declared, which were verified, and any mismatch.
 
