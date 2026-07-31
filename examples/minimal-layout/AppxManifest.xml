@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap">
+
+  <Identity
+    Name="OpenAppx.Example"
+    Publisher="CN=OpenAppx-Example"
+    Version="0.1.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>openappx example</DisplayName>
+    <PublisherDisplayName>openappx</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application Id="app" Executable="app.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="openappx example"
+        Description="Minimal layout for openappx pack tests"
+        BackgroundColor="#1A1A1A"
+        Square150x150Logo="Assets\StoreLogo.png"
+        Square44x44Logo="Assets\StoreLogo.png">
+        <uap:SplashScreen Image="Assets\StoreLogo.png" BackgroundColor="#1A1A1A" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+</Package>
