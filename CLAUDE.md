@@ -15,24 +15,28 @@ pytest -q                                   # pythonpath=["src"] comes from pypr
 pytest tests/test_pack.py::test_pack_example -q   # single test
 ./scripts/pack.sh --root examples/minimal-layout --out /tmp/x.msix
 PYTHONPATH=src python3 -m openappx.validate --root examples/minimal-layout
+PYTHONPATH=src python3 -m openappx.inspect --package /tmp/x.msix   # --json for machine output
 pip install -e ".[dev]"                     # then the `openappx` console script works
 ./scripts/bootstrap-makemsix.sh             # optional native backend; often fails on new toolchains
 ```
 
 Exit codes are part of the contract: `0` ok, `1` pack/runtime failure, `2` usage or layout-validation failure.
 
-`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below and is where a regression will surface first. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
+`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
 
 ## Architecture
 
 Entry points fan out, logic lives in leaf modules:
 
-- `cli.py` — `openappx <pack|validate>` dispatcher; imports subcommand modules **lazily** so a broken/optional path never breaks the other command.
+- `cli.py` — `openappx <pack|validate|inspect>` dispatcher; imports subcommand modules **lazily** so a broken/optional path never breaks the other commands.
 - `pack.py` — argparse CLI only (arg parsing, validation gate, error printing).
 - `pack_core.py` — the two backends, `pack_python` and `pack_makemsix`. Keep it argparse-free: tests and any future API consumer import from here, not from `pack.py`.
-- `blockmap.py` — all format-level logic (block hashing, path mangling, XML rendering).
-- `validate.py` — `layout_problems(root) -> list[str]`; the extension point for new checks.
+- `blockmap.py` — all format-level logic: block hashing, path mangling, XML rendering, and `read_local_header()` for reading real ZIP headers back.
+- `validate.py` — `layout_problems(root) -> list[str]`, run **before** pack on a possibly-broken layout.
+- `inspect.py` — `inspect_package(msix) -> dict`, run **after** pack on a finished archive; recomputes every block hash from stored bytes. Keep the two apart: `validate` must tolerate garbage input, `inspect` must not.
 - `sign/` — API stub only.
+
+Both checkers return a list of human-readable problem strings rather than raising; an empty list means "coherent". New checks append to that list — that is the extension point in each.
 
 ### Format invariants (easy to break, hard to notice)
 

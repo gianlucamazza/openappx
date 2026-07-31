@@ -7,33 +7,19 @@ package that packs fine but is rejected by the target installer.
 from __future__ import annotations
 
 import hashlib
-import struct
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from openappx.blockmap import BLOCK_SIZE, NS, package_path
+from openappx.blockmap import BLOCK_SIZE, NS, package_path, read_local_header
 from openappx.pack_core import pack_python
 
 REPO = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO / "examples" / "minimal-layout"
 
 GENERATED_PARTS = ("[Content_Types].xml", "AppxBlockMap.xml")
-
-
-def read_local_header(data: bytes, offset: int) -> dict:
-    """Parse the ZIP local file header actually written to disk."""
-    sig, _ver, flag, _comp, _t, _d, _crc, _cs, _us, name_len, extra_len = struct.unpack(
-        "<IHHHHHIIIHH", data[offset : offset + 30]
-    )
-    assert sig == 0x04034B50, f"not a local file header at {offset}"
-    return {
-        "flag": flag,
-        "name": data[offset + 30 : offset + 30 + name_len],
-        "size": 30 + name_len + extra_len,
-    }
 
 
 def blockmap_files(msix: Path) -> dict[str, ET.Element]:
@@ -62,13 +48,13 @@ def test_lfh_size_matches_written_headers(packed: Path):
 
     for info in infos:
         header = read_local_header(raw, info.header_offset)
-        assert header["name"].decode("utf-8") == info.filename
+        assert header.name.decode("utf-8") == info.filename
         if info.filename in GENERATED_PARTS:
             continue  # generated parts are not listed in the blockmap
         el = declared[package_path(Path(info.filename))]
-        assert int(el.get("LfhSize")) == header["size"], (
+        assert int(el.get("LfhSize")) == header.size, (
             f"{info.filename}: blockmap says {el.get('LfhSize')}, "
-            f"archive has {header['size']} (extra fields present?)"
+            f"archive has {header.size} (extra fields present?)"
         )
 
 

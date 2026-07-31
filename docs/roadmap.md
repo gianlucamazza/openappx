@@ -14,7 +14,7 @@
 - [ ] Golden tests against packages produced by makeappx (when available)
 - [x] LfhSize / ZIP parity asserted against the headers actually written
 - [x] Byte-reproducible pack (asserted in tests)
-- [ ] `openappx inspect` — list package contents + blockmap summary
+- [x] `openappx inspect` — contents, blockmap summary, archive coherence (`--json`)
 - [x] CI (GitHub Actions, Linux, Python 3.10–3.13)
 
 ## v0.3 — Signing

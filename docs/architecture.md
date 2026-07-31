@@ -1,6 +1,6 @@
 # Architecture
 
-openappx is a **host-side** toolchain. It does not run on the target OS of the package; it *produces* packages that target Windows Appx/MSIX installers (desktop, server, or other devices that accept that format).
+openappx is a **host-side** toolchain. It does not run on the target OS of the package; it _produces_ packages that target Windows Appx/MSIX installers (desktop, server, or other devices that accept that format).
 
 ## Layers
 
@@ -23,12 +23,19 @@ L1  Target platform (not openappx)
 
 ## v0 components
 
-| Module | Role |
-|--------|------|
-| `openappx.blockmap` | 64 KiB SHA-256 block hashes; `AppxBlockMap.xml` |
-| `openappx.validate` | Layout / manifest sanity checks |
-| `openappx.pack` | Assemble zip; backends: `python`, `makemsix` |
-| `openappx.sign` | Placeholder package for future signing API |
+| Module               | Role                                                                      |
+| -------------------- | ------------------------------------------------------------------------- |
+| `openappx.blockmap`  | 64 KiB SHA-256 block hashes; `AppxBlockMap.xml`; ZIP local-header parsing |
+| `openappx.validate`  | Layout / manifest sanity checks (**before** pack)                         |
+| `openappx.pack_core` | Pack backends: `python`, `makemsix`                                       |
+| `openappx.pack`      | CLI over `pack_core`                                                      |
+| `openappx.inspect`   | Package / blockmap coherence checks (**after** pack)                      |
+| `openappx.sign`      | Placeholder package for future signing API                                |
+
+`validate` and `inspect` bracket the pack step and never share code paths: the first
+greps a layout that may be broken, the second re-derives hashes from a finished
+archive. A package that survives both is structurally sound — which is a weaker claim
+than "installs", since certification policy lives outside this tool.
 
 ## Backends
 

@@ -1,9 +1,11 @@
 """AppxBlockMap generation (64 KiB SHA-256 blocks)."""
+
 from __future__ import annotations
 
 import base64
 import hashlib
 import os
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
@@ -53,6 +55,40 @@ def hash_file_blocks(data: bytes) -> Tuple[List[bytes], List[int]]:
 
 def zip_local_header_size(name_utf8: bytes, extra: bytes = b"") -> int:
     return 30 + len(name_utf8) + len(extra)
+
+
+LFH_SIGNATURE = 0x04034B50
+LFH_STRUCT = "<IHHHHHIIIHH"
+
+
+@dataclass(frozen=True)
+class LocalHeader:
+    """A ZIP local file header as actually written to the archive."""
+
+    name: bytes
+    flag_bits: int
+    size: int  # 30 + name length + extra length, i.e. the blockmap's LfhSize
+    extra_len: int
+
+
+def read_local_header(archive: bytes, offset: int) -> LocalHeader:
+    """Parse the local file header at `offset` in a raw ZIP archive.
+
+    Used to check declared LfhSize against reality: `zip_local_header_size`
+    assumes no extra fields, and nothing in `zipfile` guarantees that.
+    """
+    fields = struct.unpack(LFH_STRUCT, archive[offset : offset + 30])
+    sig, _ver, flag, _comp, _time, _date, _crc, _csize, _size, name_len, extra_len = (
+        fields
+    )
+    if sig != LFH_SIGNATURE:
+        raise ValueError(f"no local file header at offset {offset}")
+    return LocalHeader(
+        name=archive[offset + 30 : offset + 30 + name_len],
+        flag_bits=flag,
+        size=30 + name_len + extra_len,
+        extra_len=extra_len,
+    )
 
 
 def collect_files(root: Path) -> List[Path]:

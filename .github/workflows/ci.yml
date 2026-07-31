@@ -26,17 +26,11 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Smoke-pack the example layout
+      - name: Smoke-pack and inspect the example layout
         run: |
-          openappx pack --root examples/minimal-layout --out /tmp/example.msix
           openappx validate --root examples/minimal-layout
-          python -c "
-          import zipfile, sys
-          with zipfile.ZipFile('/tmp/example.msix') as z:
-              bad = z.testzip()
-              assert bad is None, bad
-              print('\n'.join(z.namelist()))
-          "
+          openappx pack --root examples/minimal-layout --out /tmp/example.msix
+          openappx inspect --package /tmp/example.msix
 
       - name: No-install invocation path still works
         run: PYTHONPATH=src python -m openappx.pack --root examples/minimal-layout --out /tmp/nopath.msix

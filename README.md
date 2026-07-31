@@ -4,7 +4,7 @@
 
 Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI for signing-capable pack.
 
-> **Status:** experimental (v0). Pack + blockmap + layout validation work. Appx code-signing and PE/UWP compilation are **out of scope for v0** (see [Non-goals](#non-goals) and [docs/roadmap.md](docs/roadmap.md)).
+> **Status:** experimental (v0). Pack + blockmap + layout validation + package inspection work. Appx code-signing and PE/UWP compilation are **out of scope for v0** (see [Non-goals](#non-goals) and [docs/roadmap.md](docs/roadmap.md)).
 
 ---
 
@@ -119,10 +119,32 @@ openappx pack --root DIR --out FILE.msix [options]
 ```
 
 ```text
-openappx validate --root DIR
+openappx validate --root DIR      # check a layout before packing
+openappx inspect --package FILE.msix [--json]
 ```
 
-Exit codes: `0` success, `1` pack failure, `2` bad usage or failed layout validation.
+`inspect` is the read side of `pack`: it re-derives every block hash from the bytes
+stored in the archive and compares them with `AppxBlockMap.xml`, checks `LfhSize`
+against the ZIP local headers actually written, and verifies that `[Content_Types].xml`
+covers every part. It works on packages produced by any tool, not just openappx.
+
+```text
+Package: /tmp/example.msix (2915 bytes)
+Identity: Name=OpenAppx.Example  Publisher=CN=OpenAppx-Example  Version=0.1.0.0
+Signature: absent
+
+Part                        Size      Stored   Method  Blocks
+app.exe                       31          33  deflate       1
+AppxManifest.xml            1265         583  deflate       1
+Assets/StoreLogo.png          67          59  deflate       1
+[Content_Types].xml         1061        1061    store       -
+AppxBlockMap.xml             621         621    store       -
+
+OK: blockmap and content types are consistent with the archive
+```
+
+Exit codes: `0` success, `1` failure (pack error, or problems found by
+`validate` / `inspect`), `2` bad usage or an unreadable input.
 
 Without an editable install, replace `openappx pack` with
 `PYTHONPATH=src python3 -m openappx.pack` (same for `validate`).
@@ -154,9 +176,11 @@ openappx/
 │   ├── architecture.md
 │   └── roadmap.md
 ├── src/openappx/
-│   ├── blockmap.py
-│   ├── pack.py
-│   ├── validate.py
+│   ├── blockmap.py    # block hashing, XML rendering, ZIP header parsing
+│   ├── pack_core.py   # pack backends (python, makemsix)
+│   ├── pack.py        # pack CLI
+│   ├── validate.py    # pre-pack layout checks
+│   ├── inspect.py     # post-pack package checks
 │   └── sign/          # API stubs (roadmap)
 ├── tests/
 ├── scripts/
