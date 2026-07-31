@@ -186,7 +186,7 @@ The full loop, entirely from Linux:
 openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
 openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer
 openappx pack --root examples/resource-only --out app.msix
-openappx sign --package app.msix --pfx mycert.pfx
+openappx sign --package app.msix --pfx mycert.pfx --timestamp
 openappx deploy --device https://<ip>:11443 --user NAME --package app.msix
 ```
 
@@ -260,9 +260,9 @@ openappx/
 | Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation. |
 | Memory | `pack` builds the archive in memory: fine for tens of MB, not for GB. |
 | Running an app | Packages are proven to **install**; launching a repackaged app is unverified (the original Windows-built package fails to launch the same way on the test console). |
-| Timestamping | Not implemented, so signatures expire with the certificate. |
+| Timestamping | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here. |
 | Bundles | No `.msixbundle` support. `CodeIntegrity.cat` is verified but not generated. |
-| Certificate trust | `inspect` proves a package matches its own signature — not that the certificate is trusted, unexpired, or matches the publisher. |
+| Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust. |
 
 ## Roadmap
 

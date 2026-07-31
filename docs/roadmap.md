@@ -49,7 +49,13 @@ Block _hashes_ were already correct: they cover uncompressed data.
       changed (`0x80096010 TRUST_E_BAD_DIGEST`).
 - [x] Check `Identity/@Publisher` against the certificate subject before signing,
       so a mismatch fails locally instead of on the device with an opaque code
-- [ ] Timestamping (countersignature), so signatures outlive certificate expiry
+- [x] Timestamping (RFC 3161 countersignature) — `openappx sign --timestamp`.
+      Verified as far as possible: `openssl ts -verify` accepts the token against
+      the RSA signature it covers, and a timestamped package still installs. Not
+      verifiable: that Windows honours it once the certificate has expired.
+- [x] Certificate inspection — subject, issuer, validity dates, publisher
+      agreement. Chain of trust remains out of scope: that is the device's
+      policy, not ours.
 
 ## v0.4 — Device validation
 

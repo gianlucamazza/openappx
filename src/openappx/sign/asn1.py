@@ -7,6 +7,7 @@ reading is done by scanning for the `APPX` marker, as upstream does.
 
 from __future__ import annotations
 
+TAG_BOOLEAN = 0x01
 TAG_INTEGER = 0x02
 TAG_BIT_STRING = 0x03
 TAG_OCTET_STRING = 0x04
@@ -44,6 +45,27 @@ def explicit(number: int, *parts: bytes) -> bytes:
 def implicit_set(number: int, *parts: bytes) -> bytes:
     """[n] IMPLICIT SET OF — the encoding signed attributes use."""
     return tlv(0xA0 | number, b"".join(sorted(parts)))
+
+
+def boolean(value: bool) -> bytes:
+    return tlv(TAG_BOOLEAN, b"\xff" if value else b"\x00")
+
+
+def read_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
+    """Return (tag, value, end offset) for the TLV at `offset`.
+
+    The only decoding this module does: enough to pull a timestamp token out of
+    a TSA response, which is a two-element SEQUENCE.
+    """
+    tag = data[offset]
+    first = data[offset + 1]
+    if first < 0x80:
+        length, start = first, offset + 2
+    else:
+        count = first & 0x7F
+        length = int.from_bytes(data[offset + 2 : offset + 2 + count], "big")
+        start = offset + 2 + count
+    return tag, data[start : start + length], start + length
 
 
 def null() -> bytes:

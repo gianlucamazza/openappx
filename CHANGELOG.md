@@ -6,6 +6,17 @@ Notable changes per release. Dates are the day the work landed.
 
 ### Added
 
+- `openappx sign --timestamp` — RFC 3161 countersignature, so a signature
+  outlives its certificate. The token covers the RSA signature (Authenticode's
+  arrangement) and `openssl ts -verify` accepts it against exactly those bytes;
+  a timestamped package still installs. Unlike the rest of the format work this
+  was not copied from a reference package — neither available Microsoft package
+  is timestamped — so what remains unproven is that Windows honours it after
+  expiry.
+- `inspect` now reports the signer: subject, self-signed or issued, expiry, and
+  whether a timestamp is present. It checks publisher agreement and validity
+  dates, never chain of trust.
+
 - `openappx unpack` — extract a layout a packer can consume again, the missing
   half of repackaging. Round-trips a real 19 MB package to byte-identical
   output. Archive member names are validated, so a crafted package cannot write

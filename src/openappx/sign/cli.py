@@ -13,8 +13,20 @@ from openappx.sign.signer import (
     make_test_certificate,
     sign_package,
 )
+from openappx.sign.timestamp import TimestampError
 
 PASSWORD_ENV = "OPENAPPX_PFX_PASSWORD"
+
+
+def timestamp_url(value: str | bool | None) -> str | None:
+    """`--timestamp` absent -> None; bare -> the default TSA; with a URL -> it."""
+    if value is False:
+        return None
+    if value is None or value is True:
+        from openappx.sign.timestamp import DEFAULT_TSA
+
+        return DEFAULT_TSA
+    return str(value)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,6 +42,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--out", type=Path, default=None, help="defaults to signing in place"
+    )
+    ap.add_argument(
+        "--timestamp",
+        nargs="?",
+        const=None,
+        default=False,
+        metavar="URL",
+        help="countersign with an RFC 3161 authority so the signature outlives "
+        "the certificate; defaults to DigiCert. Needs network access.",
     )
     ap.add_argument(
         "--no-publisher-check",
@@ -73,7 +94,11 @@ def main(argv: list[str] | None = None) -> int:
             identity,
             args.out,
             check_publisher=not args.no_publisher_check,
+            timestamp_url=timestamp_url(args.timestamp),
         )
+    except TimestampError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     except SigningUnavailable as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

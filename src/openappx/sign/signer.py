@@ -141,8 +141,15 @@ def _signed_attributes(spc_content: bytes) -> list[bytes]:
     ]
 
 
-def build_p7x(blob: bytes, identity: SigningIdentity) -> bytes:
-    """Wrap a digest blob into a signed AppxSignature.p7x."""
+def build_p7x(
+    blob: bytes, identity: SigningIdentity, timestamp_url: str | None = None
+) -> bytes:
+    """Wrap a digest blob into a signed AppxSignature.p7x.
+
+    With `timestamp_url`, the RSA signature is countersigned by that RFC 3161
+    authority so it outlives the certificate. That needs network access and makes
+    the output non-reproducible — the token carries a nonce and the TSA's clock.
+    """
     hashes, serialization, padding, _pkcs12 = _require_cryptography()
 
     spc_full, spc_content = spc_indirect_data(blob)
@@ -155,14 +162,22 @@ def build_p7x(blob: bytes, identity: SigningIdentity) -> bytes:
     certificate_der = identity.certificate.public_bytes(serialization.Encoding.DER)
     issuer_der = identity.certificate.issuer.public_bytes()
 
-    signer_info = asn1.sequence(
+    signer_fields = [
         asn1.integer(1),
         asn1.sequence(issuer_der, asn1.integer(identity.certificate.serial_number)),
         asn1.algorithm(OID_SHA256),
         asn1.implicit_set(0, *attributes),
         asn1.algorithm(OID_RSA_ENCRYPTION),
         asn1.octet_string(signature),
-    )
+    ]
+    if timestamp_url:
+        from openappx.sign.timestamp import fetch_token, unauthenticated_attributes
+
+        # The timestamp covers the signature itself, not the content.
+        token = fetch_token(signature, timestamp_url)
+        signer_fields.append(unauthenticated_attributes(token))
+
+    signer_info = asn1.sequence(*signer_fields)
 
     signed_data = asn1.sequence(
         asn1.integer(1),
@@ -179,9 +194,20 @@ def build_p7x(blob: bytes, identity: SigningIdentity) -> bytes:
     return P7X_MAGIC + content_info
 
 
+# Appx manifests spell stateOrProvinceName `S=`, RFC 4514 spells it `ST=`, and a
+# real Microsoft-signed package uses both — the manifest one way, the certificate
+# the other. Comparing them literally reports a mismatch that is not there.
+_ATTRIBUTE_ALIASES = {"s": "st", "e": "emailaddress", "email": "emailaddress"}
+
+
 def _normalise_name(name: str) -> str:
-    """Compare X.500 names without tripping over incidental whitespace."""
-    return ",".join(part.strip() for part in name.split(",")).casefold()
+    """Compare X.500 names ignoring whitespace, case and attribute spelling."""
+    parts = []
+    for part in name.split(","):
+        attribute, sep, value = part.strip().partition("=")
+        key = attribute.strip().casefold()
+        parts.append(f"{_ATTRIBUTE_ALIASES.get(key, key)}{sep}{value.strip()}")
+    return ",".join(parts).casefold()
 
 
 def package_publisher(package: Path) -> str | None:
@@ -202,6 +228,7 @@ def sign_package(
     out_package: Path | None = None,
     *,
     check_publisher: bool = True,
+    timestamp_url: str | None = None,
 ) -> Path:
     """Sign an unsigned package, writing `AppxSignature.p7x` as its last part.
 
@@ -231,7 +258,7 @@ def sign_package(
     if "AXCD" not in digests:
         raise ValueError(f"{package} already carries a signature")
 
-    p7x = build_p7x(digest_blob(digests), identity)
+    p7x = build_p7x(digest_blob(digests), identity, timestamp_url)
     signed = append_stored_part(archive, SIGNATURE_PART, p7x)
 
     out_package.parent.mkdir(parents=True, exist_ok=True)

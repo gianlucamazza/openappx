@@ -243,12 +243,57 @@ def _signature_report(pkg: Path, problems: list[str]) -> dict:
     except ValueError as e:
         problems.append(f"{SIGNATURE}: {e}")
 
-    return {
+    report: dict = {
         "digests": sorted(declared),
         "verified": sorted(n for n in declared if n in RECOMPUTABLE),
         # AXCD covers the central directory as it was before the signature was
         # inserted; those bytes are gone from a signed archive.
         "unverifiable": sorted(n for n in declared if n not in RECOMPUTABLE),
+        "certificate": None,
+        "timestamped": _has_timestamp(pkg),
+    }
+    report["certificate"] = _certificate_report(pkg, problems)
+    return report
+
+
+def _has_timestamp(pkg: Path) -> bool:
+    """Whether the signature carries an RFC 3161 countersignature."""
+    from openappx.sign.timestamp import token_from_p7x
+
+    with zipfile.ZipFile(pkg) as zf:
+        return token_from_p7x(zf.read(SIGNATURE)) is not None
+
+
+def _certificate_report(pkg: Path, problems: list[str]) -> dict | None:
+    """Who signed it and whether the dates hold — never whether it is trusted.
+
+    Reading the certificate needs the optional [sign] extra; without it the rest
+    of `inspect` still works and the report simply says so.
+    """
+    try:
+        from openappx.sign.certificate import (
+            CertificateInspectionUnavailable,
+            certificate_problems,
+            signer_info,
+        )
+
+        info = signer_info(pkg)
+        problems.extend(certificate_problems(pkg))
+    except CertificateInspectionUnavailable:
+        return {"available": False}
+    except (ValueError, KeyError) as e:
+        problems.append(f"{SIGNATURE}: cannot read certificate: {e}")
+        return {"available": False}
+
+    if info is None:
+        return None
+    return {
+        "available": True,
+        "subject": info.subject,
+        "issuer": info.issuer,
+        "self_signed": info.self_signed,
+        "not_valid_after": info.not_valid_after.isoformat(),
+        "expired": info.expired,
     }
 
 
@@ -271,7 +316,27 @@ def render(report: dict) -> str:
                 else ""
             )
         )
-        lines.append("  (digest coherence only — certificate trust is not evaluated)")
+        certificate = sig.get("certificate")
+        if certificate and certificate.get("available"):
+            kind = "self-signed" if certificate["self_signed"] else "issued"
+            expiry = certificate["not_valid_after"][:10]
+            lines.append(
+                f"  signer: {certificate['subject']} ({kind}, "
+                f"{'EXPIRED' if certificate['expired'] else 'expires'} {expiry})"
+            )
+        elif certificate is not None:
+            lines.append("  signer: install openappx[sign] to read the certificate")
+        lines.append(
+            f"  timestamp: {'present' if sig.get('timestamped') else 'none'}"
+            + (
+                ""
+                if sig.get("timestamped")
+                else " (signature dies with the certificate)"
+            )
+        )
+        lines.append(
+            "  (digests and publisher only — chain of trust is not evaluated)"
+        )
     lines.append("")
 
     width = max((len(p["name"]) for p in report["parts"]), default=4)
