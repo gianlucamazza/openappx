@@ -1,0 +1,167 @@
+"""Format-level invariants: blockmap/ZIP parity and reproducible output.
+
+These guard the subtle rules documented in CLAUDE.md — a break here produces a
+package that packs fine but is rejected by the target installer.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import struct
+import xml.etree.ElementTree as ET
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from openappx.blockmap import BLOCK_SIZE, NS, package_path
+from openappx.pack_core import pack_python
+
+REPO = Path(__file__).resolve().parents[1]
+EXAMPLE = REPO / "examples" / "minimal-layout"
+
+GENERATED_PARTS = ("[Content_Types].xml", "AppxBlockMap.xml")
+
+
+def read_local_header(data: bytes, offset: int) -> dict:
+    """Parse the ZIP local file header actually written to disk."""
+    sig, _ver, flag, _comp, _t, _d, _crc, _cs, _us, name_len, extra_len = struct.unpack(
+        "<IHHHHHIIIHH", data[offset : offset + 30]
+    )
+    assert sig == 0x04034B50, f"not a local file header at {offset}"
+    return {
+        "flag": flag,
+        "name": data[offset + 30 : offset + 30 + name_len],
+        "size": 30 + name_len + extra_len,
+    }
+
+
+def blockmap_files(msix: Path) -> dict[str, ET.Element]:
+    with zipfile.ZipFile(msix) as zf:
+        root = ET.fromstring(zf.read("AppxBlockMap.xml"))
+    return {el.get("Name"): el for el in root.findall(f"{{{NS}}}File")}
+
+
+@pytest.fixture
+def packed(tmp_path: Path) -> Path:
+    return pack_python(EXAMPLE, tmp_path / "example.msix")
+
+
+def test_pack_is_byte_reproducible(tmp_path: Path):
+    a = pack_python(EXAMPLE, tmp_path / "a.msix").read_bytes()
+    b = pack_python(EXAMPLE, tmp_path / "b.msix").read_bytes()
+    assert hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()
+
+
+def test_lfh_size_matches_written_headers(packed: Path):
+    """LfhSize is computed as 30+len(name), never measured — prove it holds."""
+    raw = packed.read_bytes()
+    declared = blockmap_files(packed)
+    with zipfile.ZipFile(packed) as zf:
+        infos = zf.infolist()
+
+    for info in infos:
+        header = read_local_header(raw, info.header_offset)
+        assert header["name"].decode("utf-8") == info.filename
+        if info.filename in GENERATED_PARTS:
+            continue  # generated parts are not listed in the blockmap
+        el = declared[package_path(Path(info.filename))]
+        assert int(el.get("LfhSize")) == header["size"], (
+            f"{info.filename}: blockmap says {el.get('LfhSize')}, "
+            f"archive has {header['size']} (extra fields present?)"
+        )
+
+
+def test_blockmap_covers_exactly_the_payload(packed: Path):
+    with zipfile.ZipFile(packed) as zf:
+        payload = {n for n in zf.namelist() if n not in GENERATED_PARTS}
+    assert {n.replace("\\", "/") for n in blockmap_files(packed)} == payload
+
+
+def test_blockmap_hashes_match_file_contents(packed: Path):
+    with zipfile.ZipFile(packed) as zf:
+        for name, el in blockmap_files(packed).items():
+            data = zf.read(name.replace("\\", "/"))
+            blocks = el.findall(f"{{{NS}}}Block")
+            assert sum(int(b.get("Size", BLOCK_SIZE)) for b in blocks) == len(data)
+            assert int(el.get("Size")) == len(data)
+
+
+def test_generated_parts_are_stored_payload_is_deflated(packed: Path):
+    with zipfile.ZipFile(packed) as zf:
+        for info in zf.infolist():
+            expected = (
+                zipfile.ZIP_STORED
+                if info.filename in GENERATED_PARTS
+                else zipfile.ZIP_DEFLATED
+            )
+            assert info.compress_type == expected, info.filename
+
+
+def test_preseeded_generated_parts_are_not_packed_as_payload(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
+    stale = b"<BlockMap>stale</BlockMap>"
+    (layout / "AppxBlockMap.xml").write_bytes(stale)
+    (layout / "[Content_Types].xml").write_bytes(b"stale")
+    (layout / "AppxSignature.p7x").write_bytes(b"stale")
+
+    out = pack_python(layout, tmp_path / "out.msix")
+    with zipfile.ZipFile(out) as zf:
+        assert zf.read("AppxBlockMap.xml") != stale
+        assert "AppxSignature.p7x" not in zf.namelist()
+    assert "AppxBlockMap.xml" not in blockmap_files(out)
+
+
+def test_empty_file_gets_one_zero_length_block(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
+    (layout / "empty.bin").write_bytes(b"")
+
+    out = pack_python(layout, tmp_path / "out.msix")
+    el = blockmap_files(out)["empty.bin"]
+    blocks = el.findall(f"{{{NS}}}Block")
+    assert int(el.get("Size")) == 0
+    assert len(blocks) == 1
+    assert blocks[0].get("Size") == "0"
+
+
+def test_nested_paths_use_backslash_in_blockmap_slash_in_zip(tmp_path: Path):
+    layout = tmp_path / "layout"
+    (layout / "Assets" / "sub").mkdir(parents=True)
+    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
+    (layout / "Assets" / "sub" / "x.png").write_bytes(b"\x89PNG")
+
+    out = pack_python(layout, tmp_path / "out.msix")
+    with zipfile.ZipFile(out) as zf:
+        assert "Assets/sub/x.png" in zf.namelist()
+    assert "Assets\\sub\\x.png" in blockmap_files(out)
+
+
+def test_unknown_extension_gets_a_content_type(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
+    (layout / "data.qwerty").write_bytes(b"payload")
+
+    out = pack_python(layout, tmp_path / "out.msix")
+    with zipfile.ZipFile(out) as zf:
+        types = zf.read("[Content_Types].xml").decode("utf-8")
+    assert 'Extension="qwerty"' in types
+
+
+def test_pack_rejects_layout_without_manifest(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "stray.txt").write_bytes(b"x")
+    with pytest.raises(FileNotFoundError):
+        pack_python(layout, tmp_path / "out.msix")
+
+
+def test_pack_overwrites_existing_output(tmp_path: Path):
+    out = tmp_path / "out.msix"
+    out.write_bytes(b"junk")
+    pack_python(EXAMPLE, out)
+    assert zipfile.is_zipfile(out)

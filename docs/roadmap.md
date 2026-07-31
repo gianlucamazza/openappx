@@ -12,9 +12,10 @@
 ## v0.2 — Robustness
 
 - [ ] Golden tests against packages produced by makeappx (when available)
-- [ ] Stricter LfhSize / ZIP flag parity with reference tools
+- [x] LfhSize / ZIP parity asserted against the headers actually written
+- [x] Byte-reproducible pack (asserted in tests)
 - [ ] `openappx inspect` — list package contents + blockmap summary
-- [ ] CI (GitHub Actions, Linux only)
+- [x] CI (GitHub Actions, Linux, Python 3.10–3.13)
 
 ## v0.3 — Signing
 

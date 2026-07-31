@@ -2,7 +2,7 @@
 
 **Linux-first, open-source tooling for Appx / MSIX package layout, validation, and packing.**
 
-Build and inspect Windows app packages from a POSIX host without Visual Studio for the *packaging* stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI for signing-capable pack.
+Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI for signing-capable pack.
 
 > **Status:** experimental (v0). Pack + blockmap + layout validation work. Appx code-signing and PE/UWP compilation are **out of scope for v0** (see [Non-goals](#non-goals) and [docs/roadmap.md](docs/roadmap.md)).
 
@@ -10,11 +10,11 @@ Build and inspect Windows app packages from a POSIX host without Visual Studio f
 
 ## What this is
 
-| You have | openappx gives you |
-|----------|-------------------|
+| You have                                                           | openappx gives you                                                                     |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | A **layout directory** (manifest, assets, binaries, payload files) | A valid **`.msix` / Appx-style ZIP** with `AppxBlockMap.xml` and `[Content_Types].xml` |
-| Optional `makemsix` + PFX | Pack *and* sign (when the native backend is available) |
-| CI on Linux | Deterministic pack tests without Windows |
+| Optional `makemsix` + PFX                                          | Pack _and_ sign (when the native backend is available)                                 |
+| CI on Linux                                                        | Deterministic pack tests without Windows                                               |
 
 It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or complements) the **makeappx / Appx packaging** slice of a Windows app pipeline.
 
@@ -26,16 +26,17 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 - Generate standards-oriented `AppxBlockMap` (64 KiB SHA-256 blocks)
 - Validate common layout mistakes before pack (missing `AppxManifest.xml`, missing `Executable`, missing logos)
 - Stay **dependency-light** (default path: Python standard library only)
+- Produce **byte-reproducible** packages (fixed timestamps; same layout → same `.msix`)
 - Remain **product-agnostic**: any app that ships as Appx/MSIX layout can use it
 
 ## Non-goals
 
-| Non-goal | Why |
-|----------|-----|
-| Compiling Win32/UWP C++/C# into PE | Requires MSVC/clang-cl + Windows SDK (or equivalent ABI sysroot) |
-| Emulating Windows or ReactOS as a build OS | Different problem domain |
-| Guaranteeing Store certification | Store has additional policies beyond package shape |
-| Replacing Device Portal / full device labs | Deploy helpers may appear later as optional modules |
+| Non-goal                                   | Why                                                              |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| Compiling Win32/UWP C++/C# into PE         | Requires MSVC/clang-cl + Windows SDK (or equivalent ABI sysroot) |
+| Emulating Windows or ReactOS as a build OS | Different problem domain                                         |
+| Guaranteeing Store certification           | Store has additional policies beyond package shape               |
+| Replacing Device Portal / full device labs | Deploy helpers may appear later as optional modules              |
 
 ---
 
@@ -68,12 +69,16 @@ See [docs/architecture.md](docs/architecture.md) for layers and extension points
 
 ```bash
 # From repo root (no install required)
-python3 -m openappx.pack \
-  --root examples/minimal-layout \
-  --out /tmp/example.msix \
-  --allow-missing
+./scripts/pack.sh --root examples/minimal-layout --out /tmp/example.msix
 
 unzip -l /tmp/example.msix | head
+```
+
+`scripts/pack.sh` is a thin wrapper that puts `src/` on `PYTHONPATH`. The equivalent
+without the wrapper:
+
+```bash
+PYTHONPATH=src python3 -m openappx.pack --root examples/minimal-layout --out /tmp/example.msix
 ```
 
 With an editable install:
@@ -81,7 +86,7 @@ With an editable install:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-openappx pack --root examples/minimal-layout --out /tmp/example.msix --allow-missing
+openappx pack --root examples/minimal-layout --out /tmp/example.msix
 pytest -q
 ```
 
@@ -105,7 +110,7 @@ openappx **writes** (do not pre-seed):
 ## CLI
 
 ```text
-python3 -m openappx.pack --root DIR --out FILE.msix [options]
+openappx pack --root DIR --out FILE.msix [options]
 
   --backend python|makemsix   default: python (unsigned)
   --makemsix PATH             makemsix binary (default: tools/bin/makemsix)
@@ -114,8 +119,13 @@ python3 -m openappx.pack --root DIR --out FILE.msix [options]
 ```
 
 ```text
-python3 -m openappx.validate --root DIR
+openappx validate --root DIR
 ```
+
+Exit codes: `0` success, `1` pack failure, `2` bad usage or failed layout validation.
+
+Without an editable install, replace `openappx pack` with
+`PYTHONPATH=src python3 -m openappx.pack` (same for `validate`).
 
 ---
 
