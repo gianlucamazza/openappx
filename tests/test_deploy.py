@@ -276,3 +276,74 @@ def test_cli_lists_packages(stub: str, monkeypatch, capsys):
     monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
     assert main(["--device", stub, "--user", "admin", "--list"]) == 0
     assert "Test_1.0_x64__abc" in capsys.readouterr().out
+
+
+def test_cli_installs_a_certificate(stub: str, tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    cert = tmp_path / "trust.cer"
+    cert.write_bytes(b"certificate-bytes")
+    code = main(["--device", stub, "--user", "admin", "--install-cert", str(cert)])
+    assert code == 0
+    assert "/api/app/packagemanager/certificate" in RECEIVED["path"]
+    assert "Installed certificate trust.cer" in capsys.readouterr().out
+
+
+def test_cli_uninstalls(stub: str, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    code = main(
+        ["--device", stub, "--user", "admin", "--uninstall", "Some_1.0_x64__abc"]
+    )
+    assert code == 0
+    assert "Some_1.0_x64__abc" in RECEIVED["deleted"]
+    assert "Removed" in capsys.readouterr().out
+
+
+def test_cli_rejects_an_empty_uninstall_target(stub: str, monkeypatch, capsys):
+    """An empty value used to fall through to the install branch and crash."""
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    assert main(["--device", stub, "--user", "admin", "--uninstall", "  "]) == 1
+    assert "needs a PackageFullName" in capsys.readouterr().err
+
+
+def test_cli_can_skip_waiting(stub: str, package: Path, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    code = main(
+        ["--device", stub, "--user", "admin", "--package", str(package), "--no-wait"]
+    )
+    assert code == 0
+    assert "not waiting" in capsys.readouterr().out
+
+
+def test_cli_reports_an_install_that_never_finishes(
+    stub: str, package: Path, monkeypatch, capsys
+):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    RECEIVED["state_status"] = 204  # still running, forever
+    code = main(
+        [
+            "--device", stub, "--user", "admin",
+            "--package", str(package), "--timeout", "1",
+        ]
+    )
+    assert code == 1
+    assert "Still installing" in capsys.readouterr().out
+
+
+def test_cli_reports_an_unreachable_device(
+    tmp_path: Path, package: Path, monkeypatch, capsys
+):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    code = main(
+        ["--device", "http://127.0.0.1:1", "--user", "admin", "--package", str(package)]
+    )
+    assert code == 1
+    assert "cannot reach" in capsys.readouterr().err
+
+
+def test_tls_context_disables_verification_explicitly():
+    """Built from the public ssl API, so what is switched off is visible."""
+    import ssl
+
+    context = DevicePortal._tls_context()
+    assert context.check_hostname is False
+    assert context.verify_mode == ssl.CERT_NONE
