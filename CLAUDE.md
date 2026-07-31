@@ -22,7 +22,9 @@ pip install -e ".[dev]"                     # then the `openappx` console script
 
 Exit codes are part of the contract: `0` ok, `1` pack/runtime failure, `2` usage or layout-validation failure.
 
-`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
+`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check; `tests/test_signature.py` checks the signature reading against Microsoft's own signed packages, downloaded on demand by `tests/conftest.py` into a gitignored cache (`OPENAPPX_NO_NETWORK=1` skips them).
+
+Those golden tests are the only thing standing between this project and a plausible-looking misreading of the format. When in doubt about a format detail, get a real signed package and check — do not reason it out. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
 
 ## Architecture
 
@@ -34,7 +36,7 @@ Entry points fan out, logic lives in leaf modules:
 - `blockmap.py` — all format-level logic: block hashing, path mangling, XML rendering, and `read_local_header()` for reading real ZIP headers back.
 - `validate.py` — `layout_problems(root) -> list[str]`, run **before** pack on a possibly-broken layout.
 - `inspect.py` — `inspect_package(msix) -> dict`, run **after** pack on a finished archive; recomputes every block hash from stored bytes. Keep the two apart: `validate` must tolerate garbage input, `inspect` must not.
-- `sign/` — API stub only.
+- `sign/` — `digest.py` parses `AppxSignature.p7x` and recomputes the digests a signature covers. Reading and verifying works; **creating** a signature does not and cannot without ASN.1+RSA. `docs/signing.md` has the verified format notes; read it before touching anything signature-shaped.
 
 Both checkers return a list of human-readable problem strings rather than raising; an empty list means "coherent". New checks append to that list — that is the extension point in each.
 
@@ -46,7 +48,7 @@ Both checkers return a list of human-readable problem strings rather than raisin
 - **`LfhSize` is computed, not measured**: `30 + len(utf8_name) + len(extra)` with `extra=b""`. If `zipfile` ever emits extra fields, the blockmap silently disagrees with the archive; `tests/test_format.py::test_lfh_size_matches_written_headers` parses the real headers back to catch that.
 - `pack_core.py` sets `info.flag_bits |= 0x800`, but CPython ≥3.11 strips that bit again for ASCII names (`zipfile._encodeFilenameFlags`). The emitted flag is `0x0`. That is valid — don't "fix" it by fighting stdlib; just don't rely on the bit being present.
 - **Output is byte-reproducible**: `ZipInfo` is built without `date_time`, so entries get the 1980 epoch default rather than wall-clock time. Do not switch to `ZipInfo.from_file()` / `writestr(arcname, ...)`, both of which stamp the current time.
-- **Empty files still get one block** (SHA-256 of `b""`, size 0) — required by the format.
+- **Block hashes cover uncompressed data; `Block/@Size` is the _compressed_ length** of that 64 KiB block, omitted entirely for stored parts. The packer currently writes the uncompressed length and gives empty files one block instead of zero — both confirmed wrong against a Microsoft-signed package, both tracked by `test_our_own_packages_are_conformant` (xfail, strict). Fixing them requires emitting deflate block-by-block, which `zipfile.writestr` cannot express.
 - **Generated parts are never read as payload**: `SKIP_NAMES` in `blockmap.py` guards against a re-pack picking up a previous run's output.
 - Files are sorted case-insensitively by package path before hashing, so pack output is deterministic.
 

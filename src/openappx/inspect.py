@@ -24,6 +24,7 @@ from openappx.blockmap import (
     package_path,
     read_local_header,
 )
+from openappx.sign import RECOMPUTABLE, parse_p7x_digests, signature_problems
 
 MANIFEST = "AppxManifest.xml"
 BLOCKMAP = "AppxBlockMap.xml"
@@ -69,8 +70,19 @@ def _blockmap_entries(data: bytes, problems: list[str]) -> dict[str, ET.Element]
     return entries
 
 
-def _check_blocks(name: str, el: ET.Element, data: bytes, problems: list[str]) -> int:
-    """Recompute block hashes from stored bytes; return the declared block count."""
+def _check_blocks(
+    name: str, el: ET.Element, data: bytes, info: zipfile.ZipInfo, problems: list[str]
+) -> int:
+    """Check the blockmap entry against the stored bytes; return block count.
+
+    Per the format (verified against a Microsoft-signed package):
+      - Hash covers the *uncompressed* 64 KiB block;
+      - Size is the *compressed* length of that block, and is omitted entirely
+        for stored (uncompressed) parts;
+      - an empty file has zero blocks.
+    Per-block compressed boundaries are not recoverable from a finished archive,
+    so the sizes are checked in aggregate against the entry's compressed size.
+    """
     declared_size = el.get("Size")
     if declared_size is not None and int(declared_size) != len(data):
         problems.append(
@@ -78,22 +90,31 @@ def _check_blocks(name: str, el: ET.Element, data: bytes, problems: list[str]) -
         )
 
     blocks = el.findall(f"{{{NS}}}Block")
-    hashes, sizes = hash_file_blocks(data)
-    if len(blocks) != len(hashes):
+    hashes, _sizes = hash_file_blocks(data)
+    expected_blocks = len(hashes) if data else 0
+    if len(blocks) != expected_blocks:
         problems.append(
-            f"{name}: blockmap declares {len(blocks)} block(s), content needs {len(hashes)}"
+            f"{name}: blockmap declares {len(blocks)} block(s), "
+            f"content needs {expected_blocks}"
         )
         return len(blocks)
 
-    for i, (block, digest, size) in enumerate(zip(blocks, hashes, sizes)):
-        expected = base64.b64encode(digest).decode("ascii")
-        if block.get("Hash") != expected:
+    for i, (block, digest) in enumerate(zip(blocks, hashes)):
+        if block.get("Hash") != base64.b64encode(digest).decode("ascii"):
             problems.append(f"{name}: block {i} hash mismatch")
-        declared_block_size = int(block.get("Size", BLOCK_SIZE))
-        if declared_block_size != size:
-            problems.append(
-                f"{name}: block {i} Size={declared_block_size}, actual {size}"
-            )
+
+    sizes = [b.get("Size") for b in blocks]
+    stored = info.compress_type == zipfile.ZIP_STORED
+    if stored:
+        if any(s is not None for s in sizes):
+            problems.append(f"{name}: stored part declares compressed block sizes")
+    elif any(s is None for s in sizes):
+        problems.append(f"{name}: compressed part is missing block Size attributes")
+    elif sum(int(s) for s in sizes) > info.compress_size:
+        problems.append(
+            f"{name}: block sizes total {sum(int(s) for s in sizes)}, "
+            f"more than the {info.compress_size} compressed bytes stored"
+        )
     return len(blocks)
 
 
@@ -171,7 +192,9 @@ def inspect_package(pkg: Path) -> dict:
                     )
                 else:
                     seen.add(key)
-                    part["blocks"] = _check_blocks(name, el, zf.read(name), problems)
+                    part["blocks"] = _check_blocks(
+                        name, el, zf.read(name), info, problems
+                    )
                     lfh = el.get("LfhSize")
                     if lfh is not None and int(lfh) != header.size:
                         problems.append(
@@ -188,13 +211,42 @@ def inspect_package(pkg: Path) -> dict:
     for missing in sorted(set(declared) - seen):
         problems.append(f"{missing}: listed in {BLOCKMAP} but absent from the archive")
 
+    signed = SIGNATURE in [p["name"] for p in parts]
+    signature = _signature_report(pkg, problems) if signed else None
+
     return {
         "package": str(pkg),
         "size": len(raw),
         "identity": identity,
-        "signed": SIGNATURE in [p["name"] for p in parts],
+        "signed": signed,
+        "signature": signature,
         "parts": parts,
         "problems": problems,
+    }
+
+
+def _signature_report(pkg: Path, problems: list[str]) -> dict:
+    """Check the package against the digests declared in its own signature.
+
+    Only digest coherence — nothing here says the certificate is trusted.
+    """
+    try:
+        declared = parse_p7x_digests(zipfile.ZipFile(pkg).read(SIGNATURE))
+    except (ValueError, zipfile.BadZipFile) as e:
+        problems.append(f"{SIGNATURE}: {e}")
+        return {"digests": [], "verified": [], "unverifiable": []}
+
+    try:
+        problems.extend(signature_problems(pkg))
+    except ValueError as e:
+        problems.append(f"{SIGNATURE}: {e}")
+
+    return {
+        "digests": sorted(declared),
+        "verified": sorted(n for n in declared if n in RECOMPUTABLE),
+        # AXCD covers the central directory as it was before the signature was
+        # inserted; those bytes are gone from a signed archive.
+        "unverifiable": sorted(n for n in declared if n not in RECOMPUTABLE),
     }
 
 
@@ -204,7 +256,20 @@ def render(report: dict) -> str:
         lines.append(
             "Identity: " + "  ".join(f"{k}={v}" for k, v in report["identity"].items())
         )
-    lines.append(f"Signature: {'present' if report['signed'] else 'absent'}")
+    sig = report.get("signature")
+    if not sig:
+        lines.append("Signature: absent")
+    else:
+        lines.append(f"Signature: present — digests {', '.join(sig['digests'])}")
+        lines.append(
+            f"  verified: {', '.join(sig['verified']) or 'none'}"
+            + (
+                f"   not checkable: {', '.join(sig['unverifiable'])}"
+                if sig["unverifiable"]
+                else ""
+            )
+        )
+        lines.append("  (digest coherence only — certificate trust is not evaluated)")
     lines.append("")
 
     width = max((len(p["name"]) for p in report["parts"]), default=4)

@@ -8,7 +8,8 @@ openappx is a **host-side** toolchain. It does not run on the target OS of the p
 L7  Deploy helpers (optional, future)
       device portals, sideload scripts — product-agnostic HTTP/CLI
 L6  Sign
-      AppxSignature.p7x from PFX / cert pipeline
+      AppxSignature.p7x — verification implemented, creation is not
+      (needs CMS/ASN.1; makemsix cannot sign either)
 L5  Pack
       blockmap + content types + OPC zip  ← v0 focus
 L4  Validate

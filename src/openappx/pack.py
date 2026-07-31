@@ -1,4 +1,5 @@
 """CLI: pack a layout directory into .msix."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,15 +24,32 @@ def default_makemsix() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="openappx pack — create an .msix from a layout")
+    ap = argparse.ArgumentParser(
+        description="openappx pack — create an .msix from a layout"
+    )
     ap.add_argument("--root", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--backend", choices=("python", "makemsix"), default="python")
     ap.add_argument("--makemsix", type=Path, default=None)
-    ap.add_argument("--cert", type=Path, default=None)
-    ap.add_argument("--cert-password", default=None)
+    ap.add_argument(
+        "--cert",
+        type=Path,
+        default=None,
+        help="unsupported: no backend can sign — see docs/signing.md",
+    )
+    ap.add_argument("--cert-password", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--allow-missing", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.cert or args.cert_password:
+        print(
+            "error: signing is not implemented by any backend.\n"
+            "  `makemsix pack` takes only -d/-p; upstream validates signatures "
+            "but cannot create them.\n"
+            "  See docs/signing.md for what signing an .msix actually requires.",
+            file=sys.stderr,
+        )
+        return 2
 
     root = args.root.resolve()
     if not root.is_dir():
@@ -50,12 +68,6 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.backend == "python":
-            if args.cert:
-                print(
-                    "warning: --cert ignored with --backend python "
-                    "(use --backend makemsix for signing)",
-                    file=sys.stderr,
-                )
             out = pack_python(root, args.out)
         else:
             bin_path = args.makemsix or default_makemsix()
@@ -66,13 +78,7 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-            out = pack_makemsix(
-                root,
-                args.out,
-                bin_path,
-                cert=args.cert,
-                cert_password=args.cert_password,
-            )
+            out = pack_makemsix(root, args.out, bin_path)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

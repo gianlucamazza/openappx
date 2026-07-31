@@ -49,12 +49,34 @@ def problems_after(tmp_path: Path, pkg: Path, **kwargs) -> list[str]:
     return inspect_package(rebuild(pkg, tmp_path / "broken.msix", **kwargs))["problems"]
 
 
-def test_clean_package_has_no_problems(pkg: Path):
+# openappx writes Block/@Size uncompressed; the format wants the compressed
+# length (verified against a Microsoft-signed package — see docs/signing.md and
+# the v0.2 roadmap entry). Until pack_python emits per-block compressed sizes,
+# our own packages trip this check, so tests that only care about *other*
+# findings filter it out through here.
+NONCONFORMANCE = "block sizes total"
+
+
+def other_problems(problems: list[str]) -> list[str]:
+    return [p for p in problems if NONCONFORMANCE not in p]
+
+
+def test_clean_package_reports_expected_metadata(pkg: Path):
     report = inspect_package(pkg)
-    assert report["problems"] == []
+    assert other_problems(report["problems"]) == []
     assert report["signed"] is False
+    assert report["signature"] is None
     assert report["identity"]["Name"] == "OpenAppx.Example"
     assert {p["name"] for p in report["parts"]} >= {"app.exe", "AppxManifest.xml"}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="pack_python writes uncompressed Block/@Size; the format requires the "
+    "compressed length, and empty files must have zero blocks",
+)
+def test_our_own_packages_are_conformant(pkg: Path):
+    assert inspect_package(pkg)["problems"] == []
 
 
 def test_detects_tampered_payload(tmp_path: Path, pkg: Path):
@@ -120,13 +142,13 @@ def test_declared_block_count_mismatch_is_reported(tmp_path: Path, pkg: Path):
     assert any("block(s), content needs" in p for p in problems)
 
 
-def test_signature_part_is_reported_and_not_blockmap_checked(tmp_path: Path, pkg: Path):
+def test_unparseable_signature_is_reported(tmp_path: Path, pkg: Path):
     out = rebuild(pkg, tmp_path / "signed.msix")
     with zipfile.ZipFile(out, "a") as zf:
         zf.writestr(zipfile.ZipInfo("AppxSignature.p7x"), b"not-a-real-signature")
     report = inspect_package(out)
     assert report["signed"] is True
-    assert report["problems"] == []
+    assert any("not a p7x signature" in p for p in report["problems"])
 
 
 def test_rejects_non_zip(tmp_path: Path):
@@ -142,7 +164,6 @@ def test_rejects_missing_file(tmp_path: Path):
 
 
 def test_cli_exit_codes(tmp_path: Path, pkg: Path, capsys):
-    assert main(["--package", str(pkg)]) == 0
     broken = rebuild(pkg, tmp_path / "broken.msix", replace={"app.exe": b"tampered"})
     assert main(["--package", str(broken)]) == 1
     assert main(["--package", str(tmp_path / "nope.msix")]) == 2
@@ -151,5 +172,5 @@ def test_cli_exit_codes(tmp_path: Path, pkg: Path, capsys):
 def test_cli_json_is_parseable(pkg: Path, capsys):
     import json
 
-    assert main(["--package", str(pkg), "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["problems"] == []
+    main(["--package", str(pkg), "--json"])
+    assert other_problems(json.loads(capsys.readouterr().out)["problems"]) == []

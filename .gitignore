@@ -6,6 +6,7 @@ venv/
 dist/
 build/
 .pytest_cache/
+tests/.cache/
 .mypy_cache/
 *.msix
 *.appx

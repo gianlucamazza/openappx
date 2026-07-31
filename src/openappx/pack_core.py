@@ -1,10 +1,10 @@
 """Pack backends: pure Python and optional makemsix."""
+
 from __future__ import annotations
 
 import subprocess
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 from openappx.blockmap import (
     build_file_blocks,
@@ -65,13 +65,13 @@ def pack_python(root: Path, out_msix: Path) -> Path:
     return out_msix
 
 
-def pack_makemsix(
-    root: Path,
-    out_msix: Path,
-    makemsix_bin: Path,
-    cert: Optional[Path] = None,
-    cert_password: Optional[str] = None,
-) -> Path:
+def pack_makemsix(root: Path, out_msix: Path, makemsix_bin: Path) -> Path:
+    """Pack via the upstream MSIX SDK CLI.
+
+    `makemsix pack` takes only -d and -p: upstream implements signature
+    *validation*, not creation, so this backend produces unsigned packages just
+    like the Python one. See docs/signing.md.
+    """
     root = root.resolve()
     out_msix = out_msix.resolve()
     out_msix.parent.mkdir(parents=True, exist_ok=True)
@@ -79,11 +79,6 @@ def pack_makemsix(
         out_msix.unlink()
 
     cmd = [str(makemsix_bin), "pack", "-d", str(root), "-p", str(out_msix)]
-    if cert:
-        cmd += ["-c", str(cert.resolve())]
-        if cert_password is not None:
-            cmd += ["-b", cert_password]
-
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(

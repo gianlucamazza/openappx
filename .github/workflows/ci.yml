@@ -25,6 +25,10 @@ jobs:
 
       - name: Test
         run: pytest -q
+        env:
+          # Golden tests fetch Microsoft's signed reference packages; a network
+          # blip must not turn into a red build.
+          OPENAPPX_NO_NETWORK: ${{ matrix.python-version == '3.13' && '' || '1' }}
 
       - name: Smoke-pack and inspect the example layout
         run: |
