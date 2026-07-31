@@ -258,9 +258,13 @@ High level: solid pack → sign → optional device deploy helpers → research 
 
 ## Contributing
 
-- Python 3.10+
-- `pytest` for tests; keep the default pack path free of native deps
-- No product-specific branding or sample IP in `examples/`
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the checks CI runs, and
+[SECURITY.md](SECURITY.md) for how keys, device credentials and untrusted
+archives are handled.
+
+The short version: keep the default pack path dependency-free, and when a format
+detail is in doubt, verify it against a real package or a real device rather than
+against the specification — that is how every serious bug here was found.
 
 ## License
 

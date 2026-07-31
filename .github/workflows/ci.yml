@@ -28,6 +28,9 @@ jobs:
       - name: Lint
         run: ruff check src tests
 
+      - name: Types
+        run: mypy
+
       - name: Test
         run: coverage run -m pytest -q
         env:

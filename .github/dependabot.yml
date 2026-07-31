@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # The audit that produced this file found the actions three major versions
+  # behind and the Python matrix missing a release. Automate the noticing.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly

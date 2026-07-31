@@ -18,6 +18,11 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # the optional [sign] extra must stay optional at runtime
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+    from cryptography.x509 import Certificate
 
 from openappx.sign import asn1
 from openappx.sign.digest import (
@@ -66,8 +71,8 @@ def _require_cryptography():
 class SigningIdentity:
     """A certificate and its private key, as `cryptography` objects."""
 
-    certificate: object
-    private_key: object
+    certificate: Certificate
+    private_key: RSAPrivateKey
 
     @property
     def subject_rfc4514(self) -> str:

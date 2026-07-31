@@ -106,15 +106,15 @@ def _check_blocks(
             problems.append(f"{name}: block {i} hash mismatch")
 
     sizes = [b.get("Size") for b in blocks]
-    stored = info.compress_type == zipfile.ZIP_STORED
-    if stored:
-        if any(s is not None for s in sizes):
+    declared = [int(s) for s in sizes if s is not None]
+    if info.compress_type == zipfile.ZIP_STORED:
+        if declared:
             problems.append(f"{name}: stored part declares compressed block sizes")
-    elif any(s is None for s in sizes):
+    elif len(declared) != len(sizes):
         problems.append(f"{name}: compressed part is missing block Size attributes")
-    elif sum(int(s) for s in sizes) > info.compress_size:
+    elif sum(declared) > info.compress_size:
         problems.append(
-            f"{name}: block sizes total {sum(int(s) for s in sizes)}, "
+            f"{name}: block sizes total {sum(declared)}, "
             f"more than the {info.compress_size} compressed bytes stored"
         )
     return len(blocks)
