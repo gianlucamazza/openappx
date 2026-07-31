@@ -6,6 +6,31 @@ This document records what was established by reading the upstream MSIX SDK and
 by dissecting Microsoft-signed packages, so the next person does not have to
 repeat it.
 
+## Sideloading requires a signature — measured, not assumed
+
+Uploading an unsigned openappx package to an Xbox One in Developer Mode
+(`openappx deploy`) produces:
+
+```json
+{
+  "Code": -2146762496,
+  "CodeText": "No signature was present in the subject.",
+  "Reason": "error 0x800B0100: The app package must be digitally signed for signature validation.",
+  "Success": false
+}
+```
+
+`0x800B0100` is `TRUST_E_NOSIGNATURE`. Two things follow:
+
+- **No signature, no install.** There is no developer-mode escape hatch; this is
+  why xllama signs with a self-signed certificate on a Windows VM and installs
+  the `.cer` on the console first (`openappx deploy --install-cert`).
+- **The container itself was readable.** Windows opened the package and looked
+  for a signature, rather than rejecting it as a malformed archive. That is
+  evidence our ZIP and OPC structure are acceptable — but *not* evidence the
+  blockmap is correct, since the blockmap is validated through the signature
+  that was missing. Proving the blockmap end-to-end requires signing first.
+
 ## The short version
 
 | Question                       | Answer                                                                                                                                     |

@@ -367,10 +367,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Removed {args.uninstall}")
             return 0
 
-        print(f"Uploading {args.package.name} to {portal.base_url} …")
+        print(f"Uploading {args.package.name} to {portal.base_url} …", flush=True)
         portal.install(args.package, args.also_upload)
         if args.no_wait:
-            print("Upload accepted; not waiting for the install to finish.")
+            print("Upload accepted; not waiting for the install to finish.", flush=True)
             return 0
 
         state = portal.wait_for_install(args.timeout)
