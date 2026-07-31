@@ -31,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--out", type=Path, default=None, help="defaults to signing in place"
     )
+    ap.add_argument(
+        "--no-publisher-check",
+        action="store_true",
+        help="sign even if Identity/@Publisher differs from the certificate subject",
+    )
 
     ap.add_argument(
         "--make-test-cert",
@@ -63,7 +68,12 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("--package and --pfx are required unless --make-test-cert is used")
 
         identity = load_pfx(args.pfx, args.pfx_password or os.environ.get(PASSWORD_ENV))
-        out = sign_package(args.package, identity, args.out)
+        out = sign_package(
+            args.package,
+            identity,
+            args.out,
+            check_publisher=not args.no_publisher_check,
+        )
     except SigningUnavailable as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

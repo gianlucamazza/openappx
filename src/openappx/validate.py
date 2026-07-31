@@ -1,4 +1,5 @@
 """Layout validation for Appx/MSIX package roots."""
+
 from __future__ import annotations
 
 import argparse
@@ -30,12 +31,54 @@ def layout_problems(root: Path) -> list[str]:
         if not p.is_file():
             problems.append(f"manifest asset missing: {asset}")
 
-    if 'Name="' not in text and "Name='" not in text:
-        # Identity Name is required; soft check
-        if "<Identity" in text and "Name=" not in text:
-            problems.append("Identity/@Name missing")
-
+    problems += _identity_problems(text)
+    problems += _capability_problems(text)
     return problems
+
+
+def _identity_attribute(text: str, attribute: str) -> str | None:
+    """Read one attribute off the <Identity> element, if it is there at all."""
+    identity = re.search(r"<Identity\b([^>]*)>", text)
+    if not identity:
+        return None
+    found = re.search(rf'\b{attribute}\s*=\s*"([^"]*)"', identity.group(1))
+    return found.group(1) if found else None
+
+
+def _identity_problems(text: str) -> list[str]:
+    if "<Identity" not in text:
+        return ["Identity element missing"]
+    return [
+        f"Identity/@{attribute} missing"
+        for attribute in ("Name", "Publisher", "Version")
+        if not _identity_attribute(text, attribute)
+    ]
+
+
+def _capability_problems(text: str) -> list[str]:
+    """Catch manifest rules a device only reports as an opaque error code.
+
+    `Windows.FullTrustApplication` without the `runFullTrust` capability fails
+    at install with 0x80080204, naming a line number and nothing else.
+    """
+    if "Windows.FullTrustApplication" not in text:
+        return []
+    if re.search(r'Capability\s+Name="runFullTrust"', text):
+        return []
+    return [
+        'EntryPoint="Windows.FullTrustApplication" needs '
+        '<rescap:Capability Name="runFullTrust" /> in <Capabilities>'
+    ]
+
+
+def publisher(root: Path) -> str | None:
+    """`Identity/@Publisher`, which must equal the signing certificate subject."""
+    manifest = Path(root) / "AppxManifest.xml"
+    if not manifest.is_file():
+        return None
+    return _identity_attribute(
+        manifest.read_text(encoding="utf-8", errors="replace"), "Publisher"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

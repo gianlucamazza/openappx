@@ -167,3 +167,32 @@ def test_certificate_can_be_password_protected(tmp_path: Path):
 def test_build_p7x_is_deterministic_for_a_fixed_key(identity):
     blob = digest_blob({k: bytes(32) for k in ("AXPC", "AXCD", "AXCT", "AXBM")})
     assert build_p7x(blob, identity) == build_p7x(blob, identity)
+
+
+def test_publisher_mismatch_is_caught_before_signing(tmp_path: Path):
+    """The device answers this with an opaque code; catch it locally instead."""
+    other = make_test_certificate(
+        "CN=Someone-Else", tmp_path / "o.pfx", tmp_path / "o.cer"
+    )[0]
+    unsigned = pack_python(EXAMPLE, tmp_path / "x.msix")
+    with pytest.raises(ValueError, match="publisher mismatch"):
+        sign_package(unsigned, load_pfx(other), tmp_path / "signed.msix")
+
+
+def test_publisher_check_can_be_skipped(tmp_path: Path):
+    other = make_test_certificate(
+        "CN=Someone-Else", tmp_path / "o.pfx", tmp_path / "o.cer"
+    )[0]
+    unsigned = pack_python(EXAMPLE, tmp_path / "x.msix")
+    out = sign_package(
+        unsigned, load_pfx(other), tmp_path / "signed.msix", check_publisher=False
+    )
+    assert out.is_file()
+
+
+def test_publisher_comparison_tolerates_whitespace(tmp_path: Path):
+    from openappx.sign.signer import _normalise_name
+
+    assert _normalise_name("CN=A, O=B") == _normalise_name("CN=A,O=B")
+    assert _normalise_name("CN=a") == _normalise_name("CN=A")
+    assert _normalise_name("CN=A,O=B") != _normalise_name("O=B,CN=A")

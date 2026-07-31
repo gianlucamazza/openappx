@@ -40,3 +40,33 @@ def test_pack_example(tmp_path: Path):
         bm = zf.read("AppxBlockMap.xml").decode("utf-8")
         assert "BlockMap" in bm
         assert "app.exe" in bm
+
+
+def test_full_trust_entrypoint_requires_the_capability(tmp_path: Path):
+    """A device reports this as 0x80080204 with only a line number."""
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/>'
+        '<Applications><Application Id="x" Executable="a.exe" '
+        'EntryPoint="Windows.FullTrustApplication"/></Applications></Package>',
+        encoding="utf-8",
+    )
+    problems = layout_problems(layout)
+    assert any("runFullTrust" in p for p in problems)
+
+
+def test_the_example_layout_declares_that_capability():
+    assert layout_problems(EXAMPLE) == []
+
+
+def test_missing_identity_attributes_are_reported(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a"/></Package>', encoding="utf-8"
+    )
+    problems = layout_problems(layout)
+    assert any("Identity/@Publisher missing" in p for p in problems)
+    assert any("Identity/@Version missing" in p for p in problems)
+    assert not any("Identity/@Name missing" in p for p in problems)

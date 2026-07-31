@@ -47,7 +47,7 @@ Block _hashes_ were already correct: they cover uncompressed data.
       (`sign/asn1.py`). An Xbox One dev kit installed a package packed and signed
       entirely by this project, and rejected the same package with one byte
       changed (`0x80096010 TRUST_E_BAD_DIGEST`).
-- [ ] Check `Identity/@Publisher` against the certificate subject before signing,
+- [x] Check `Identity/@Publisher` against the certificate subject before signing,
       so a mismatch fails locally instead of on the device with an opaque code
 - [ ] Timestamping (countersignature), so signatures outlive certificate expiry
 
@@ -57,6 +57,11 @@ Block _hashes_ were already correct: they cover uncompressed data.
       product lock-in; the same REST API serves Xbox, HoloLens, IoT and desktop
 - [x] `--install-cert` to trust a certificate on the device
 - [x] End-to-end proof on real hardware: pack → sign → deploy → installed
+- [x] Mapped the full validation chain by deploying deliberately-broken packages:
+      container → signature → blockmap → manifest syntax → manifest semantics →
+      deployment. See the table in [signing.md](signing.md).
+- [x] `validate` now catches `runFullTrust` locally, a rule the device reports
+      only as `0x80080204` plus a line number
 - [ ] Repackage a real application (xllama) with openappx and install it — the
       remaining gap is that its layout is produced on a Windows VM, so nothing
       here has yet packaged a genuine UWP binary

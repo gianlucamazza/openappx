@@ -11,17 +11,26 @@ The proof is not that the code runs — it is that an Xbox One dev kit installed
 a package packed *and* signed entirely by this project, and rejected the same
 package with one byte altered:
 
-| Package                                    | Console response |
-| ------------------------------------------ | ---------------- |
-| unsigned                                    | `0x800B0100 TRUST_E_NOSIGNATURE` — "must be digitally signed" |
-| signed, ZIP32                               | `0x8007000B ERROR_BAD_FORMAT` — "opening the package failed" |
-| signed, ZIP64                               | **installed successfully** |
-| signed, ZIP64, one payload byte flipped     | `0x80096010 TRUST_E_BAD_DIGEST` — "the digital signature did not verify" |
+| Package                                     | Console response |
+| ------------------------------------------- | ---------------- |
+| unsigned                                     | `0x800B0100 TRUST_E_NOSIGNATURE` — "must be digitally signed" |
+| signed, ZIP32                                | `0x8007000B ERROR_BAD_FORMAT` — "opening the package failed" |
+| signed, ZIP64, resource-only                 | **installed successfully** |
+| signed, ZIP64, one payload byte flipped      | `0x80096010 TRUST_E_BAD_DIGEST` — "the digital signature did not verify" |
+| signed, `Windows.FullTrustApplication` without `runFullTrust` | `0x80080204` — manifest validation error, with a line number |
+| signed, valid manifest, placeholder `app.exe` | `0x80070490 ERROR_NOT_FOUND` — during "Deployment Add" |
 
-The last two rows are what matter: Windows opened the container, parsed the CMS
-structure, verified the RSA signature and checked the digests against the actual
-bytes. It rejected exactly the two digests (`AXPC`, `AXBM`) that
-`openappx inspect` independently flagged.
+Read as a sequence, those rows map the whole validation chain: container →
+signature → blockmap → manifest syntax → manifest semantics → deployment. Each
+error moved the failure one stage later, and the last one is about the payload
+being a 31-byte placeholder rather than a real binary — nothing to do with
+packaging. `openappx validate` now catches the `runFullTrust` case locally,
+since the device only reports it as a line number.
+
+Rows three and four are the proof of signing: Windows opened the container,
+parsed the CMS structure, verified the RSA signature and checked the digests
+against the actual bytes — rejecting exactly the two digests (`AXPC`, `AXBM`)
+that `openappx inspect` independently flagged.
 
 **Appx archives must be ZIP64.** This is not optional and not about size: a
 ZIP32 archive of the same package fails to open with `0x8007000B`. Microsoft's
@@ -48,8 +57,9 @@ Signing needs the optional extra: `pip install 'openappx[sign]'`. Packing,
 inspecting and verifying remain dependency-free.
 
 The certificate subject must match `Identity/@Publisher` **exactly**, and the
-device must already trust the certificate — those are two separate failures with
-unhelpful error codes, so check both before debugging anything else.
+device must already trust the certificate. `openappx sign` refuses a publisher
+mismatch locally (`--no-publisher-check` to override); an untrusted certificate
+is still only visible as an install failure.
 
 ## Sideloading requires a signature — measured, not assumed
 

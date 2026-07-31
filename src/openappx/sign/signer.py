@@ -174,15 +174,53 @@ def build_p7x(blob: bytes, identity: SigningIdentity) -> bytes:
     return P7X_MAGIC + content_info
 
 
+def _normalise_name(name: str) -> str:
+    """Compare X.500 names without tripping over incidental whitespace."""
+    return ",".join(part.strip() for part in name.split(",")).casefold()
+
+
+def package_publisher(package: Path) -> str | None:
+    import zipfile
+
+    from openappx.validate import _identity_attribute
+
+    with zipfile.ZipFile(package) as zf:
+        if "AppxManifest.xml" not in zf.namelist():
+            return None
+        text = zf.read("AppxManifest.xml").decode("utf-8", errors="replace")
+    return _identity_attribute(text, "Publisher")
+
+
 def sign_package(
-    package: Path, identity: SigningIdentity, out_package: Path | None = None
+    package: Path,
+    identity: SigningIdentity,
+    out_package: Path | None = None,
+    *,
+    check_publisher: bool = True,
 ) -> Path:
-    """Sign an unsigned package, writing `AppxSignature.p7x` as its last part."""
+    """Sign an unsigned package, writing `AppxSignature.p7x` as its last part.
+
+    The manifest's `Identity/@Publisher` must equal the certificate subject, or
+    the device rejects the package however valid the signature is — checked here
+    so the failure is legible instead of an opaque install error.
+    """
     from openappx.pack_core import append_stored_part  # avoids a cycle at import time
 
     package = Path(package)
     out_package = Path(out_package) if out_package else package
     archive = package.read_bytes()
+
+    if check_publisher:
+        declared = package_publisher(package)
+        subject = identity.subject_rfc4514
+        if declared is None:
+            raise ValueError(f"{package}: no Identity/@Publisher to check against")
+        if _normalise_name(declared) != _normalise_name(subject):
+            raise ValueError(
+                "publisher mismatch — the device would reject this package:\n"
+                f"  manifest Identity/@Publisher: {declared}\n"
+                f"  certificate subject:          {subject}"
+            )
 
     digests = compute_digests(package)
     if "AXCD" not in digests:

@@ -2,7 +2,8 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  IgnorableNamespaces="uap">
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
 
   <Identity
     Name="OpenAppx.Example"
@@ -23,6 +24,13 @@
   <Resources>
     <Resource Language="en-US" />
   </Resources>
+
+  <!-- Windows.FullTrustApplication is rejected without this: a device answers
+       0x80080204 "requires runFullTrust capability", pointing at the
+       <Application> line. See docs/signing.md. -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
 
   <Applications>
     <Application Id="app" Executable="app.exe" EntryPoint="Windows.FullTrustApplication">
