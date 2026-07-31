@@ -1,8 +1,9 @@
 """Device Portal client, exercised against a stub server.
 
 The stub speaks the same REST shapes as WDP, so the wire format (multipart body,
-basic auth, the `auto-` CSRF bypass, state polling) is verified without a console.
-It cannot tell us whether a real device *accepts* a package — only a device can.
+basic auth, the CSRF cookie-to-header handshake, state polling) is verified
+without a console. It cannot tell us whether a real device *accepts* a package —
+only a device can.
 """
 
 from __future__ import annotations
@@ -49,6 +50,17 @@ class StubHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._auth_ok():
             return self._send(401, {"Reason": "nope"})
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Set-Cookie", "CSRF-Token=token-from-cookie; Path=/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path.startswith("/api/app/packagemanager/state"):
+            status = RECEIVED.get("state_status", 200)
+            if status != 200:
+                return self._send(status)
+            return self._send(200, RECEIVED.get("state", {"Code": 0, "CodeText": "OK"}))
         if self.path.startswith("/api/app/packagemanager/packages"):
             return self._send(
                 200,
@@ -58,8 +70,6 @@ class StubHandler(BaseHTTPRequestHandler):
                     ]
                 },
             )
-        if self.path.startswith("/api/app/packagemanager/state"):
-            return self._send(200, RECEIVED.get("state", {"Code": 0, "CodeText": "OK"}))
         return self._send(404)
 
     def do_POST(self):
@@ -68,6 +78,8 @@ class StubHandler(BaseHTTPRequestHandler):
         if RECEIVED.get("scenario") == "csrf":
             return self._send(403, {"Reason": "CSRF token required"})
         length = int(self.headers.get("Content-Length", 0))
+        RECEIVED["csrf_header"] = self.headers.get("X-CSRF-Token", "")
+        RECEIVED["cookie"] = self.headers.get("Cookie", "")
         RECEIVED["body"] = self.rfile.read(length)
         RECEIVED["content_type"] = self.headers.get("Content-Type", "")
         RECEIVED["path"] = self.path
@@ -103,19 +115,57 @@ def package(tmp_path: Path) -> Path:
     return pkg
 
 
-def test_username_gets_the_csrf_bypass_prefix(portal: DevicePortal, package: Path):
+def test_username_is_sent_unchanged_by_default(portal: DevicePortal, package: Path):
+    """Default is the cookie-to-header CSRF scheme, so no `auto-` mangling."""
     portal.install(package)
-    assert RECEIVED["user"] == "auto-admin"
-
-
-def test_bypass_can_be_turned_off(stub: str, package: Path):
-    portal = DevicePortal(stub, "admin", "hunter2", bypass_csrf=False)
-    portal.packages()
     assert RECEIVED["user"] == "admin"
 
 
+def test_csrf_bypass_prefixes_the_username_when_asked(stub: str):
+    portal = DevicePortal(stub, "admin", "hunter2", bypass_csrf=True)
+    portal.packages()
+    assert RECEIVED["user"] == "auto-admin"
+
+
 def test_prefix_is_not_applied_twice(stub: str):
-    assert DevicePortal(stub, "auto-admin", "x").username == "auto-admin"
+    assert (
+        DevicePortal(stub, "auto-admin", "x", bypass_csrf=True).username == "auto-admin"
+    )
+
+
+def test_csrf_token_is_taken_from_the_cookie_and_echoed_back(
+    portal: DevicePortal, package: Path
+):
+    portal.install(package)
+    assert RECEIVED["csrf_header"] == "token-from-cookie"
+    assert "CSRF-Token=token-from-cookie" in RECEIVED["cookie"]
+
+
+def test_install_state_204_means_still_running(portal: DevicePortal):
+    RECEIVED["state_status"] = 204
+    state = portal.install_state()
+    assert not state.done and state.phase == "installing"
+
+
+def test_install_state_404_means_nothing_was_deployed(portal: DevicePortal):
+    RECEIVED["state_status"] = 404
+    state = portal.install_state()
+    assert not state.done and state.phase == "none"
+
+
+def test_success_false_marks_a_failure_even_with_code_zero(portal: DevicePortal):
+    RECEIVED["state"] = {"Code": 0, "Success": False, "Reason": "signature invalid"}
+    assert portal.install_state().failed
+
+
+def test_certificate_upload_uses_the_certificate_endpoint(
+    portal: DevicePortal, tmp_path: Path
+):
+    cert = tmp_path / "test.cer"
+    cert.write_bytes(b"certificate-bytes")
+    portal.install_certificate(cert)
+    assert "/api/app/packagemanager/certificate" in RECEIVED["path"]
+    assert b"certificate-bytes" in RECEIVED["body"]
 
 
 def test_install_sends_the_package_as_multipart(portal: DevicePortal, package: Path):
@@ -123,6 +173,8 @@ def test_install_sends_the_package_as_multipart(portal: DevicePortal, package: P
     assert "package=example.msix" in RECEIVED["path"]
     assert RECEIVED["content_type"].startswith("multipart/form-data; boundary=")
     body = RECEIVED["body"]
+    # WDP wants every part under the field name "file", whatever the file is called
+    assert b'name="file"' in body
     assert b'filename="example.msix"' in body
     assert package.read_bytes() in body  # payload survives intact
 

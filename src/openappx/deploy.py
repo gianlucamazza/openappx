@@ -10,11 +10,12 @@ stays product-agnostic:
 
 Two WDP quirks drive the design:
 
-- **CSRF**: non-GET requests need an `X-CSRF-Token` header derived from a session
-  cookie, which standalone clients cannot easily produce. Microsoft's documented
-  escape hatch is to prefix the username with `auto-`; we do that by default.
-  That username must never be used to log into the web UI, or the console is
-  open to CSRF attacks.
+- **CSRF**: non-GET requests need an `X-CSRF-Token` header whose value comes from
+  the `CSRF-Token` session cookie. We do a GET first, keep the cookie and echo it
+  back — the scheme the Device Portal web UI itself uses, and the one proven
+  against a real Xbox. Microsoft also documents an `auto-<username>` prefix that
+  bypasses CSRF for CLI clients; it is available via `bypass_csrf=True`, but that
+  account must then never be used in the web UI, or the console is open to CSRF.
 - **TLS**: devices serve a self-signed certificate, so verification fails by
   default. `--insecure` is required to accept it, explicitly rather than
   silently.
@@ -42,8 +43,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 INSTALL_PATH = "/api/app/packagemanager/package"
+CERTIFICATE_PATH = "/api/app/packagemanager/certificate"
 STATE_PATH = "/api/app/packagemanager/state"
 PACKAGES_PATH = "/api/app/packagemanager/packages"
+
+# WDP expects every uploaded part under the form field name "file", regardless of
+# the file's own name; the file name goes in the `package` query parameter.
+FORM_FIELD = "file"
+CSRF_COOKIE = "CSRF-Token"
+CSRF_HEADER = "X-CSRF-Token"
 
 PASSWORD_ENV = "OPENAPPX_DEVICE_PASSWORD"
 DEFAULT_TIMEOUT = 300
@@ -68,7 +76,11 @@ class InstallState:
 
     @property
     def failed(self) -> bool:
-        return self.code is not None and self.code != 0
+        if self.code is None:
+            return False
+        if self.raw.get("Success") is False:
+            return True
+        return self.code != 0
 
 
 class DevicePortal:
@@ -79,11 +91,12 @@ class DevicePortal:
         password: str,
         *,
         insecure: bool = False,
-        bypass_csrf: bool = True,
+        bypass_csrf: bool = False,
         timeout: int = 30,
     ) -> None:
         self.base_url = self._normalise(base_url)
-        # See the module docstring: `auto-` is how a CLI escapes CSRF protection.
+        # `auto-` is Microsoft's documented CSRF escape hatch; off by default
+        # because the cookie-to-header scheme below is what a real Xbox accepts.
         self.username = (
             f"auto-{username}"
             if bypass_csrf and not username.startswith("auto-")
@@ -92,6 +105,7 @@ class DevicePortal:
         self.password = password
         self.timeout = timeout
         self.context = ssl._create_unverified_context() if insecure else None
+        self._csrf_token: str | None = None
 
     @staticmethod
     def _normalise(base_url: str) -> str:
@@ -103,8 +117,41 @@ class DevicePortal:
         raw = f"{self.username}:{self.password}".encode("utf-8")
         return "Basic " + base64.b64encode(raw).decode("ascii")
 
-    def _open(self, request: urllib.request.Request) -> tuple[int, bytes]:
+    def _fetch_csrf_token(self) -> str | None:
+        """GET the root page to establish the CSRF session cookie.
+
+        The Device Portal UI copies the `CSRF-Token` cookie into the
+        `X-CSRF-Token` header on every non-GET request; so do we.
+        """
+        if self._csrf_token is not None:
+            return self._csrf_token
+        request = urllib.request.Request(self.base_url + "/")
         request.add_header("Authorization", self._auth_header())
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self.timeout, context=self.context
+            ) as response:
+                cookies = response.headers.get_all("Set-Cookie") or []
+        except (urllib.error.HTTPError, urllib.error.URLError):
+            return None  # let the actual request report the real failure
+
+        for cookie in cookies:
+            for part in cookie.split(";"):
+                name, _, value = part.strip().partition("=")
+                if name.lower() == CSRF_COOKIE.lower() and value:
+                    self._csrf_token = value
+                    return value
+        return None
+
+    def _open(
+        self, request: urllib.request.Request, allow: tuple[int, ...] = ()
+    ) -> tuple[int, bytes]:
+        request.add_header("Authorization", self._auth_header())
+        if request.get_method() != "GET":
+            token = self._fetch_csrf_token()
+            if token:
+                request.add_header(CSRF_HEADER, token)
+                request.add_header("Cookie", f"{CSRF_COOKIE}={token}")
         try:
             with urllib.request.urlopen(
                 request, timeout=self.timeout, context=self.context
@@ -112,6 +159,8 @@ class DevicePortal:
                 return response.status, response.read()
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace").strip()
+            if e.code in allow:
+                return e.code, body.encode()
             if e.code == 401:
                 raise DeviceError(
                     "authentication rejected (401) — check the Device Portal "
@@ -120,7 +169,8 @@ class DevicePortal:
             if e.code == 403:
                 raise DeviceError(
                     f"forbidden (403): {body or 'likely CSRF protection'} — the "
-                    "username must be usable with the `auto-` prefix"
+                    f"{CSRF_HEADER} handshake failed; retry with bypass_csrf "
+                    "(sends the username as `auto-<name>`)"
                 ) from e
             raise DeviceError(f"device returned HTTP {e.code}: {body}") from e
         except urllib.error.URLError as e:
@@ -143,9 +193,20 @@ class DevicePortal:
         return json.loads(body or b"{}").get("InstalledPackages", [])
 
     def install_state(self) -> InstallState:
-        status, body = self._open(urllib.request.Request(self._url(STATE_PATH)))
-        if status == 204 or not body.strip():
-            return InstallState(code=None, message="", phase="idle", raw={})
+        """Poll the deployment result.
+
+        WDP status codes carry the meaning here: 200 is the result of the last
+        deployment, 204 means one is still running, 404 means none was found.
+        """
+        status, body = self._open(
+            urllib.request.Request(self._url(STATE_PATH)), allow=(404,)
+        )
+        if status == 204:
+            return InstallState(code=None, message="", phase="installing", raw={})
+        if status == 404:
+            return InstallState(code=None, message="", phase="none", raw={})
+        if not body.strip():
+            return InstallState(code=None, message="", phase="unknown", raw={})
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
@@ -158,27 +219,21 @@ class DevicePortal:
         return InstallState(
             code=data.get("Code"),
             message=data.get("Reason") or data.get("CodeText") or "",
-            phase=data.get("InstallState") or data.get("Phase") or "",
+            phase=data.get("InstallState") or data.get("Phase") or "done",
             raw=data,
         )
 
-    def install(self, package: Path, extra_files: list[Path] | None = None) -> None:
-        """Upload a package. Returns once the device accepts it, not once installed."""
-        package = Path(package)
-        if not package.is_file():
-            raise DeviceError(f"no such package: {package}")
-
-        files = [package, *(extra_files or [])]
+    def _upload(self, path: str, files: list[Path], package_name: str) -> bytes:
         boundary = f"----openappx-{uuid.uuid4().hex}"
         with tempfile.TemporaryFile() as body:
-            for path in files:
+            for item in files:
                 body.write(f"--{boundary}\r\n".encode())
                 body.write(
-                    f'Content-Disposition: form-data; name="{path.name}"; '
-                    f'filename="{path.name}"\r\n'.encode()
+                    f'Content-Disposition: form-data; name="{FORM_FIELD}"; '
+                    f'filename="{item.name}"\r\n'.encode()
                 )
                 body.write(b"Content-Type: application/octet-stream\r\n\r\n")
-                with path.open("rb") as source:  # streamed: packages can be large
+                with item.open("rb") as source:  # streamed: packages can be large
                     while chunk := source.read(1 << 20):
                         body.write(chunk)
                 body.write(b"\r\n")
@@ -187,15 +242,32 @@ class DevicePortal:
             body.seek(0)
 
             request = urllib.request.Request(
-                self._url(INSTALL_PATH, {"package": package.name}),
-                data=body,
-                method="POST",
+                self._url(path, {"package": package_name}), data=body, method="POST"
             )
             request.add_header(
                 "Content-Type", f"multipart/form-data; boundary={boundary}"
             )
             request.add_header("Content-Length", str(length))
-            self._open(request)
+            _status, response = self._open(request)
+            return response
+
+    def install(self, package: Path, extra_files: list[Path] | None = None) -> None:
+        """Upload a package. Returns once the device accepts it, not once installed.
+
+        `extra_files` carries dependency packages (framework .appx) alongside it;
+        WDP accepts them as further parts of the same upload.
+        """
+        package = Path(package)
+        if not package.is_file():
+            raise DeviceError(f"no such package: {package}")
+        self._upload(INSTALL_PATH, [package, *(extra_files or [])], package.name)
+
+    def install_certificate(self, certificate: Path) -> None:
+        """Trust a .cer on the device so packages signed with it can install."""
+        certificate = Path(certificate)
+        if not certificate.is_file():
+            raise DeviceError(f"no such certificate: {certificate}")
+        self._upload(CERTIFICATE_PATH, [certificate], certificate.name)
 
     def wait_for_install(
         self, timeout: int = DEFAULT_TIMEOUT, poll: float = 2.0
@@ -248,6 +320,12 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--package", type=Path, help="package to install")
     action.add_argument("--list", action="store_true", help="list installed packages")
     action.add_argument("--uninstall", metavar="PACKAGE_FULL_NAME")
+    action.add_argument(
+        "--install-cert",
+        type=Path,
+        metavar="CERT.cer",
+        help="trust a certificate on the device so packages signed with it install",
+    )
 
     ap.add_argument(
         "--also-upload",
@@ -257,6 +335,11 @@ def main(argv: list[str] | None = None) -> int:
         help="dependency packages or a .cer to send alongside",
     )
     ap.add_argument("--no-wait", action="store_true", help="do not poll for the result")
+    ap.add_argument(
+        "--csrf-bypass",
+        action="store_true",
+        help="send the username as `auto-<name>` instead of the cookie handshake",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -265,12 +348,18 @@ def main(argv: list[str] | None = None) -> int:
             args.user,
             resolve_password(args.password),
             insecure=args.insecure,
+            bypass_csrf=args.csrf_bypass,
             timeout=max(30, args.timeout),
         )
 
         if args.list:
             for pkg in portal.packages():
                 print(f"{pkg.get('PackageFullName', '?')}\t{pkg.get('Name', '')}")
+            return 0
+
+        if args.install_cert:
+            portal.install_certificate(args.install_cert)
+            print(f"Installed certificate {args.install_cert.name}")
             return 0
 
         if args.uninstall:

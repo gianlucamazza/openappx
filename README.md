@@ -164,10 +164,17 @@ openappx deploy --device https://192.168.1.50:11443 --user devuser \
 - The device must be in **Developer Mode** with Device Portal enabled
   (on Xbox: Dev Home → Home → Remote Access → Remote Access Settings).
 - `--insecure` is required because devices serve a self-signed certificate.
-- The username is sent with an `auto-` prefix, which is Microsoft's documented
-  way for command-line clients to bypass Device Portal's CSRF protection. **Do
-  not use that account to log into the web UI.**
-- `--list` shows installed packages, `--uninstall PACKAGE_FULL_NAME` removes one.
+- CSRF is handled by the cookie-to-header handshake the Device Portal UI uses
+  (`CSRF-Token` cookie → `X-CSRF-Token` header). `--csrf-bypass` switches to
+  Microsoft's `auto-<username>` escape hatch instead; that account must then
+  never be used in the web UI.
+- `--list` shows installed packages, `--uninstall PACKAGE_FULL_NAME` removes one,
+  `--install-cert CERT.cer` trusts a certificate on the device.
+
+**Sideloading requires a signed package.** The device only installs packages
+signed by a certificate it trusts, which is why `--install-cert` exists — and
+why openappx alone is not yet enough to get an app onto a console from Linux.
+See [docs/signing.md](docs/signing.md).
 
 Exit codes: `0` success, `1` failure (pack error, a failed deploy, or problems
 found by `validate` / `inspect`), `2` bad usage or an unreadable input.
