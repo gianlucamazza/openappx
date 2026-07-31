@@ -124,6 +124,7 @@ openappx pack --root DIR --out FILE.msix [options]
 ```text
 openappx validate --root DIR      # check a layout before packing
 openappx inspect --package FILE.msix [--json]
+openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
 ```
 
 `inspect` is the read side of `pack`: it re-derives every block hash from the bytes
@@ -148,8 +149,28 @@ AppxBlockMap.xml             610         610    store       -
 OK: blockmap and content types are consistent with the archive
 ```
 
-Exit codes: `0` success, `1` failure (pack error, or problems found by
-`validate` / `inspect`), `2` bad usage or an unreadable input.
+### Deploying to a device
+
+`deploy` talks to the [Windows Device Portal](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal),
+the same REST service on Xbox, HoloLens, IoT and Windows desktop — so a real
+device tells you whether a package is actually installable:
+
+```bash
+export OPENAPPX_DEVICE_PASSWORD='…'        # keeps it out of `ps`
+openappx deploy --device https://192.168.1.50:11443 --user devuser \
+  --package example.msix --insecure
+```
+
+- The device must be in **Developer Mode** with Device Portal enabled
+  (on Xbox: Dev Home → Home → Remote Access → Remote Access Settings).
+- `--insecure` is required because devices serve a self-signed certificate.
+- The username is sent with an `auto-` prefix, which is Microsoft's documented
+  way for command-line clients to bypass Device Portal's CSRF protection. **Do
+  not use that account to log into the web UI.**
+- `--list` shows installed packages, `--uninstall PACKAGE_FULL_NAME` removes one.
+
+Exit codes: `0` success, `1` failure (pack error, a failed deploy, or problems
+found by `validate` / `inspect`), `2` bad usage or an unreadable input.
 
 Without an editable install, replace `openappx pack` with
 `PYTHONPATH=src python3 -m openappx.pack` (same for `validate` and `inspect`).
@@ -189,6 +210,7 @@ openappx/
 │   ├── pack.py        # pack CLI
 │   ├── validate.py    # pre-pack layout checks
 │   ├── inspect.py     # post-pack package checks
+│   ├── deploy.py      # Windows Device Portal client (install/list/uninstall)
 │   └── sign/          # signature digests: parse + verify (no signing)
 ├── tests/
 ├── scripts/

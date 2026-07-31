@@ -16,13 +16,15 @@ pytest tests/test_pack.py::test_pack_example -q   # single test
 ./scripts/pack.sh --root examples/minimal-layout --out /tmp/x.msix
 PYTHONPATH=src python3 -m openappx.validate --root examples/minimal-layout
 PYTHONPATH=src python3 -m openappx.inspect --package /tmp/x.msix   # --json for machine output
+OPENAPPX_DEVICE_PASSWORD=… PYTHONPATH=src python3 -m openappx.deploy \
+  --device https://<ip>:11443 --user <name> --package /tmp/x.msix --insecure
 pip install -e ".[dev]"                     # then the `openappx` console script works
 ./scripts/bootstrap-makemsix.sh             # optional native backend; often fails on new toolchains
 ```
 
 Exit codes are part of the contract: `0` ok, `1` pack/runtime failure, `2` usage or layout-validation failure.
 
-`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check; `tests/test_signature.py` checks the signature reading against Microsoft's own signed packages, downloaded on demand by `tests/conftest.py` into a gitignored cache (`OPENAPPX_NO_NETWORK=1` skips them).
+`tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check; `tests/test_signature.py` checks the signature reading against Microsoft's own signed packages, downloaded on demand by `tests/conftest.py` into a gitignored cache (`OPENAPPX_NO_NETWORK=1` skips them); `tests/test_deploy.py` runs the Device Portal client against a stub HTTP server, which proves the wire format but never that a real device accepts a package.
 
 Those golden tests are the only thing standing between this project and a plausible-looking misreading of the format. When in doubt about a format detail, get a real signed package and check — do not reason it out. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
 
@@ -36,6 +38,7 @@ Entry points fan out, logic lives in leaf modules:
 - `blockmap.py` — all format-level logic: block hashing, path mangling, XML rendering, and `read_local_header()` for reading real ZIP headers back.
 - `validate.py` — `layout_problems(root) -> list[str]`, run **before** pack on a possibly-broken layout.
 - `inspect.py` — `inspect_package(msix) -> dict`, run **after** pack on a finished archive; recomputes every block hash from stored bytes. Keep the two apart: `validate` must tolerate garbage input, `inspect` must not.
+- `deploy.py` — Windows Device Portal REST client. Two quirks are load-bearing: the username is sent with an `auto-` prefix (Microsoft's documented CSRF bypass for CLI clients — that account must never be used in the web UI), and `--insecure` is required because devices serve self-signed certificates. Installing touches someone's hardware: never pick a target device implicitly, and never uninstall as a side effect of installing.
 - `sign/` — `digest.py` parses `AppxSignature.p7x` and recomputes the digests a signature covers. Reading and verifying works; **creating** a signature does not and cannot without ASN.1+RSA. `docs/signing.md` has the verified format notes; read it before touching anything signature-shaped.
 
 Both checkers return a list of human-readable problem strings rather than raising; an empty list means "coherent". New checks append to that list — that is the extension point in each.

@@ -5,8 +5,10 @@ openappx is a **host-side** toolchain. It does not run on the target OS of the p
 ## Layers
 
 ```
-L7  Deploy helpers (optional, future)
-      device portals, sideload scripts — product-agnostic HTTP/CLI
+L7  Deploy helpers
+      openappx.deploy — Windows Device Portal REST client (Xbox, HoloLens,
+      IoT, desktop). Doubles as the only end-to-end validator we have:
+      the device accepts the package or explains why not.
 L6  Sign
       AppxSignature.p7x — verification implemented, creation is not
       (needs CMS/ASN.1; makemsix cannot sign either)
