@@ -89,6 +89,15 @@ def test_a_traversal_entry_is_rejected_end_to_end(tmp_path: Path):
     assert not (tmp_path / "escaped.txt").exists()
 
 
+def test_duplicate_archive_members_are_rejected(tmp_path: Path):
+    archive = tmp_path / "duplicate.msix"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("AppxManifest.xml", "one")
+        zf.writestr("AppxManifest.xml", "two")
+    with pytest.raises(ValueError, match="duplicate archive member"):
+        unpack_package(archive, tmp_path / "out")
+
+
 def test_backslash_names_land_in_subdirectories(tmp_path: Path):
     """Blockmap-style names use backslashes; they are path separators, not literals."""
     archive = tmp_path / "a.msix"

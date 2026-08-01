@@ -40,6 +40,7 @@ from openappx.pack_core import (
     _Entry,
     _write_central_directory,
     _write_entry,
+    atomic_write_bytes,
     zip64_local_extra,
 )
 
@@ -275,16 +276,17 @@ def main(argv: list[str] | None = None) -> int:
         for p in missing:
             print(f"error: no such package: {p}", file=sys.stderr)
         return 2
-    unsigned = unsigned_payloads([read_package(p) for p in args.packages])
-    if unsigned:
-        print(
-            "warning: these payload packages are unsigned, and a device will "
-            "refuse the bundle: " + ", ".join(unsigned),
-            file=sys.stderr,
-        )
     try:
+        entries = [read_package(p) for p in args.packages]
+        unsigned = unsigned_payloads(entries)
+        if unsigned:
+            print(
+                "warning: these payload packages are unsigned, and a device will "
+                "refuse the bundle: " + ", ".join(unsigned),
+                file=sys.stderr,
+            )
         out = build_bundle(args.packages, args.out)
-    except ValueError as e:
+    except (OSError, ValueError, zipfile.BadZipFile) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     print(
@@ -341,6 +343,4 @@ def build_bundle(packages: list[Path], out: Path) -> Path:
 
     _write_central_directory(archive, written)
     out = Path(out).resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(bytes(archive))
-    return out
+    return atomic_write_bytes(out, bytes(archive))

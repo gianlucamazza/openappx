@@ -43,11 +43,15 @@ def unpack_package(
     written: list[Path] = []
     destination.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(package) as zf:
+        seen: set[str] = set()
         for name in zf.namelist():
             if name.endswith("/"):
                 continue
             if not keep_generated and name in GENERATED:
                 continue
+            if name in seen:
+                raise ValueError(f"duplicate archive member: {name}")
+            seen.add(name)
             target = safe_target(destination, name)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(zf.read(name))

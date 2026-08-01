@@ -283,6 +283,9 @@ class DevicePortal:
         package = Path(package)
         if not package.is_file():
             raise DeviceError(f"no such package: {package}")
+        for extra in extra_files or []:
+            if not extra.is_file():
+                raise DeviceError(f"no such upload file: {extra}")
         self._upload(INSTALL_PATH, [package, *(extra_files or [])], package.name)
 
     def install_certificate(self, certificate: Path) -> None:

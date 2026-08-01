@@ -256,7 +256,10 @@ def sign_package(
     the device rejects the package however valid the signature is — checked here
     so the failure is legible instead of an opaque install error.
     """
-    from openappx.pack_core import append_stored_part  # avoids a cycle at import time
+    from openappx.pack_core import (
+        append_stored_part,  # avoids a cycle at import time
+        atomic_write_bytes,
+    )
 
     package = Path(package)
     out_package = Path(out_package) if out_package else package
@@ -285,9 +288,7 @@ def sign_package(
     p7x = build_p7x(digest_blob(digests), identity, timestamp_url, bundle=is_bundle)
     signed = append_stored_part(archive, SIGNATURE_PART, p7x)
 
-    out_package.parent.mkdir(parents=True, exist_ok=True)
-    out_package.write_bytes(signed)
-    return out_package
+    return atomic_write_bytes(out_package, signed)
 
 
 def make_test_certificate(

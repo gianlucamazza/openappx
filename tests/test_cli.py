@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO / "examples" / "minimal-layout"
 RESOURCE_ONLY = REPO / "examples" / "resource-only"
 
-SUBCOMMANDS = ("pack", "unpack", "sign", "validate", "inspect", "deploy")
+SUBCOMMANDS = ("pack", "bundle", "unpack", "sign", "validate", "inspect", "deploy")
 
 
 def test_bare_invocation_prints_usage_and_fails(capsys):
@@ -125,4 +125,16 @@ def test_pack_reports_runtime_failures_as_exit_1(tmp_path: Path, capsys):
     out.mkdir()
     code = pack_main(["--root", str(RESOURCE_ONLY), "--out", str(out)])
     assert code == 1
+    assert "error:" in capsys.readouterr().err
+
+
+def test_bundle_reports_a_corrupt_input_without_traceback(tmp_path: Path, capsys):
+    broken = tmp_path / "broken.msix"
+    broken.write_bytes(b"not a zip")
+    from openappx.bundle import main as bundle_main
+
+    code = bundle_main(
+        ["--package", str(broken), "--out", str(tmp_path / "out.msixbundle")]
+    )
+    assert code == 2
     assert "error:" in capsys.readouterr().err

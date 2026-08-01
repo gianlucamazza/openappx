@@ -15,7 +15,7 @@
 - [x] LfhSize / ZIP parity asserted against the headers actually written
 - [x] Byte-reproducible pack (asserted in tests)
 - [x] `openappx inspect` — contents, blockmap summary, archive coherence (`--json`)
-- [x] CI (GitHub Actions, Linux, Python 3.10–3.13)
+- [x] CI (GitHub Actions, Linux, Python 3.10–3.14)
 
 ### Conformance fixes (found by the golden tests)
 

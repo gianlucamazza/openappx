@@ -259,6 +259,13 @@ def test_password_is_required_when_not_interactive(monkeypatch):
         resolve_password(None)
 
 
+def test_install_rejects_missing_extra_upload(portal: DevicePortal, tmp_path: Path):
+    package = tmp_path / "package.msix"
+    package.write_bytes(b"package")
+    with pytest.raises(DeviceError, match="no such upload file"):
+        portal.install(package, [tmp_path / "missing.appx"])
+
+
 def test_cli_installs_and_reports_success(
     stub: str, package: Path, monkeypatch, capsys
 ):

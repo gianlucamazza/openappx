@@ -117,7 +117,7 @@ Uploading an unsigned openappx package to an Xbox One in Developer Mode
 | Can `makemsix` sign a package? | **No.** `makemsix pack` accepts only `-d` and `-p`. Upstream ships `SignatureValidator`, no signature _creator_.                           |
 | Can openappx sign?             | **Yes**, via `openappx sign` with the optional `[sign]` extra (`cryptography` for RSA and PKCS#12; the DER encoding is ours). |
 | What can openappx do?          | Parse `AppxSignature.p7x`, recompute the digests it covers, and report tampering.                                                          |
-| What does verification prove?  | That the package matches what its signature covers — **not** that the certificate is trusted, unexpired, or matches `Identity/@Publisher`. |
+| What does verification prove?  | That the package matches what its signature covers and, when `[sign]` is installed, that the certificate dates and `Identity/@Publisher` agree — **not** that the certificate is trusted. |
 
 Earlier versions of this project documented a `--cert` / `--cert-password` flow
 through `makemsix`. That flow never existed; the flags are now rejected with an

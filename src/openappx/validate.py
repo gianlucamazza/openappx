@@ -23,17 +23,19 @@ def layout_problems(root: Path) -> list[str]:
     # its own comments. Well-formedness still looks at the raw text.
     text = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
 
+    problems += _symlink_problems(root)
+
     m = re.search(r'Executable="([^"]+)"', text)
     if m:
-        exe = root / m.group(1).replace("\\", "/")
-        if not exe.is_file():
+        exe = _layout_reference(root, m.group(1))
+        if exe is None or not exe.is_file():
             problems.append(f"manifest Executable not found: {m.group(1)}")
 
     for asset in re.findall(
         r'(?:Logo|Square\d+x\d+Logo|Wide\d+x\d+Logo|Image)="([^"]+)"', text
     ):
-        p = root / asset.replace("\\", "/")
-        if not p.is_file():
+        p = _layout_reference(root, asset)
+        if p is None or not p.is_file():
             problems.append(f"manifest asset missing: {asset}")
 
     problems += _wellformed_problems(raw)
@@ -42,6 +44,28 @@ def layout_problems(root: Path) -> list[str]:
     problems += _entry_point_problems(root, text)
     problems += _build_artefact_problems(root)
     return problems
+
+
+def _layout_reference(root: Path, value: str) -> Path | None:
+    """Resolve a manifest path only when it stays inside the layout."""
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:/", normalized):
+        return None
+    root = root.resolve()
+    candidate = (root / normalized).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate
+
+
+def _symlink_problems(root: Path) -> list[str]:
+    return [
+        f"symlink in layout is not allowed: {path.relative_to(root)}"
+        for path in root.rglob("*")
+        if path.is_symlink()
+    ]
 
 
 def _wellformed_problems(text: str) -> list[str]:

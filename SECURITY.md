@@ -14,8 +14,18 @@ a device over the Windows Device Portal. Relevant to security:
   requires disabling TLS verification. That makes the connection trivially
   interceptable: use it on a network you trust, not over the open internet.
 - **`openappx unpack` reads untrusted archives.** Member names are checked so a
-  crafted package cannot write outside the destination; see
-  `tests/test_unpack.py`. Please report any way around that.
+  crafted package cannot write outside the destination, and a duplicate member
+  is refused rather than silently overwriting; see `tests/test_unpack.py`.
+- **`pack` reads a layout that may not be yours.** A symlink anywhere under the
+  pack root is refused rather than followed, and a manifest reference that
+  escapes the root — `../`, an absolute path, a drive letter — is reported as
+  missing rather than resolved. Both would otherwise pull host files into a
+  package.
+- **Output is written atomically.** A failed pack or sign leaves the previous
+  file intact instead of a truncated archive, which would be a valid ZIP that
+  fails much later, on a device.
+
+Please report any way around these.
 
 ## What verification does and does not prove
 

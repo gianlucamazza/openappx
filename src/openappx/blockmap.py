@@ -125,6 +125,8 @@ def collect_files(root: Path) -> list[Path]:
     for dirpath, _, filenames in os.walk(root):
         for fn in filenames:
             p = Path(dirpath) / fn
+            if p.is_symlink():
+                raise ValueError(f"layout contains a symlink: {p.relative_to(root)}")
             name = package_path(p.relative_to(root))
             if name in SKIP_NAMES:
                 continue

@@ -4,6 +4,12 @@ Notable changes per release. Dates are the day the work landed.
 
 ## Unreleased
 
+- Hardened layout boundaries by rejecting manifest references outside the layout
+  and symlink payloads, and made pack, bundle and sign outputs atomic.
+- Normalized bundle/deploy error handling so malformed or missing inputs produce
+  controlled CLI errors instead of tracebacks.
+- Aligned the README, signing guide and roadmap with current Device Portal,
+  certificate-inspection and Python CI behavior.
 - The PyPI summary said "layout validation and packing", which is what this was
   two releases ago. Metadata is immutable per version, so 0.6.0 keeps the old
   wording on PyPI; the next release carries the accurate one.

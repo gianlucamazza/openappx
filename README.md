@@ -146,7 +146,7 @@ openappx validate --root DIR      # check a layout before packing
 openappx unpack --package FILE.msix --out DIR
 openappx inspect --package FILE.msix [--json]
 openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
-openappx bundle --package A.msix --package B.msix --out X.msixbundle
+openappx bundle --package A.msix --package B.msix --out X.msixbundle  # repeat --package
 ```
 
 A bundle carries one application across architectures, plus any resource
@@ -209,10 +209,10 @@ The full loop, entirely from Linux:
 
 ```bash
 openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
-openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer
+openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer --insecure
 openappx pack --root examples/resource-only --out app.msix
 openappx sign --package app.msix --pfx mycert.pfx --timestamp
-openappx deploy --device https://<ip>:11443 --user NAME --package app.msix
+openappx deploy --device https://<ip>:11443 --user NAME --package app.msix --insecure
 ```
 
 `examples/resource-only/` is the layout this loop was verified with: it installs
@@ -221,11 +221,15 @@ manifest instead, and deliberately ships a placeholder executable, so it packs
 and signs but stops at the deployment stage.
 
 Signing needs `pip install 'openappx[sign]'`; everything else is stdlib-only.
+The same extra is needed when `inspect` must read certificate details from a
+signed package; digest and archive checks remain available without it.
 [docs/signing.md](docs/signing.md) has the format details and the console
 responses that verify each step.
 
-Exit codes: `0` success, `1` failure (pack error, a failed deploy, or problems
-found by `validate` / `inspect`), `2` bad usage or an unreadable input.
+Exit codes: `0` success, `1` a valid command failed at runtime or found invalid
+content, `2` bad usage or a missing/unreadable input path. For example,
+`validate` returns `1` for layout problems, while `unpack` returns `1` for a
+corrupt archive and `2` when the package path does not exist.
 
 Without an editable install, replace `openappx pack` with
 `PYTHONPATH=src python3 -m openappx.pack` (same for `validate` and `inspect`).

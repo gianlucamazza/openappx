@@ -3,6 +3,8 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from openappx.blockmap import hash_file_blocks, package_path
 from openappx.pack_core import pack_python
 from openappx.validate import layout_problems
@@ -70,6 +72,36 @@ def test_missing_identity_attributes_are_reported(tmp_path: Path):
     assert any("Identity/@Publisher missing" in p for p in problems)
     assert any("Identity/@Version missing" in p for p in problems)
     assert not any("Identity/@Name missing" in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    "reference", ["../outside.exe", "/tmp/outside.exe", "C:/outside.exe"]
+)
+def test_manifest_references_must_stay_inside_layout(tmp_path: Path, reference: str):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/>'
+        f'<Applications><Application Id="x" Executable="{reference}"/></Applications>'
+        "</Package>",
+        encoding="utf-8",
+    )
+    assert any("Executable not found" in p for p in layout_problems(layout))
+
+
+def test_symlinks_are_rejected_before_pack(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/></Package>',
+        encoding="utf-8",
+    )
+    target = tmp_path / "outside.bin"
+    target.write_bytes(b"outside")
+    (layout / "payload.bin").symlink_to(target)
+    assert any("symlink" in p for p in layout_problems(layout))
+    with pytest.raises(ValueError, match="symlink"):
+        pack_python(layout, tmp_path / "out.msix")
 
 
 RESOURCE_ONLY = REPO / "examples" / "resource-only"

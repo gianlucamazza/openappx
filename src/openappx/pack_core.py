@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import struct
 import subprocess
+import tempfile
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +57,30 @@ _METHOD_DEFLATE = 8
 # Bit 11 marks the name as UTF-8. Required for anything outside ASCII: without
 # it a reader falls back to CP437 and the name comes out as mojibake.
 _FLAG_UTF8_NAME = 0x800
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> Path:
+    """Write beside *path*, then replace it — so a failure leaves no half-package.
+
+    Everything here writes a finished archive in one go, and a partial `.msix`
+    is worse than none: it is a valid ZIP that fails much later, on a device.
+    """
+    path = Path(path).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+    return path
 
 
 @dataclass(frozen=True)
@@ -270,9 +296,7 @@ def pack_python(root: Path, out_msix: Path) -> Path:
 
     _write_central_directory(archive, written)
 
-    out_msix.parent.mkdir(parents=True, exist_ok=True)
-    out_msix.write_bytes(bytes(archive))
-    return out_msix
+    return atomic_write_bytes(out_msix, bytes(archive))
 
 
 def _read_zip64_extra(extra: bytes) -> tuple[int, int]:
@@ -344,15 +368,24 @@ def pack_makemsix(root: Path, out_msix: Path, makemsix_bin: Path) -> Path:
     root = root.resolve()
     out_msix = out_msix.resolve()
     out_msix.parent.mkdir(parents=True, exist_ok=True)
-    if out_msix.exists():
-        out_msix.unlink()
-
-    cmd = [str(makemsix_bin), "pack", "-d", str(root), "-p", str(out_msix)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"makemsix failed ({proc.returncode}):\n{proc.stdout}\n{proc.stderr}"
-        )
-    if not out_msix.is_file():
-        raise RuntimeError(f"makemsix reported success but {out_msix} missing")
+    fd, temporary = tempfile.mkstemp(prefix=f".{out_msix.name}.", dir=out_msix.parent)
+    os.close(fd)
+    os.unlink(temporary)
+    try:
+        cmd = [str(makemsix_bin), "pack", "-d", str(root), "-p", temporary]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"makemsix failed ({proc.returncode}):\n{proc.stdout}\n{proc.stderr}"
+            )
+        if not Path(temporary).is_file():
+            raise RuntimeError(
+                f"makemsix reported success but wrote no {out_msix.name}"
+            )
+        os.replace(temporary, out_msix)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
     return out_msix
