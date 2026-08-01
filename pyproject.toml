@@ -9,7 +9,7 @@ description = "Linux-first open-source Appx/MSIX layout validation and packing"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-authors = [{ name = "openappx contributors" }]
+authors = [{ name = "Gianluca Mazza", email = "info@gianlucamazza.it" }]
 keywords = ["msix", "appx", "packaging", "windows", "linux"]
 classifiers = [
   "Development Status :: 4 - Beta",
