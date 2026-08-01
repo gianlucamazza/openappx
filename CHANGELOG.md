@@ -77,9 +77,10 @@ First release published to PyPI: `pip install openappx`.
 - `0x8d160120` on app launch is a property of this console, not of any packer —
   and this is now settled rather than suspected. Device Portal refuses to launch
   **every** sideloaded package on it, **Microsoft Edge included**. Four packages
-  with nothing in common but the hardware behave identically: xllama built on
-  Windows with MSBuild, the same xllama repackaged here, a UWP application
-  compiled from scratch on Linux, and Edge as Microsoft signed and shipped it.
+  with nothing in common but the hardware behave identically: a shipped
+  application built on Windows with MSBuild, that same application repackaged
+  here, a UWP application compiled from scratch on Linux, and Edge as Microsoft
+  signed and shipped it.
   All install, none launches, same code.
 
   This retires an open question, and does not replace it with a better one: it

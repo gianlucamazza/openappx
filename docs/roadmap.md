@@ -68,8 +68,8 @@ Block _hashes_ were already correct: they cover uncompressed data.
       deployment. See the table in [signing.md](signing.md).
 - [x] `validate` now catches `runFullTrust` locally, a rule the device reports
       only as `0x80080204` plus a line number
-- [x] **Repackaged a real application** (xllama 1.5.2.789, 47.7 MB of binaries)
-      from its published release and installed it on the console. Pack 3.9 s,
+- [x] **Repackaged a real application** — 47.7 MB of binaries, taken from a
+      shipped release built on Windows — and installed it on the console. Pack 3.9 s,
       sign 0.6 s, deploy 5.3 s. Doing so also found that `inspect` wrongly
       expected `CodeIntegrity.cat` in the blockmap.
 - [x] `--start` / `--stop` through `/api/taskmanager/app`
@@ -84,8 +84,8 @@ Block _hashes_ were already correct: they cover uncompressed data.
       `/api/taskmanager/app` returns it for every sideloaded package on this
       device, including **Microsoft Edge**, which Microsoft signed and shipped.
       Four packages with nothing in common but the hardware fail identically:
-      xllama built on Windows with MSBuild, the same xllama repackaged here, a
-      UWP app compiled from scratch on Linux, and Edge. Every one installs; none
+      a shipped application built on Windows with MSBuild, that same application
+      repackaged here, a UWP app compiled from scratch on Linux, and Edge. Every one installs; none
       launches. `/api/app/packagemanager/packages` also reports `AppListEntry: 0`
       for all four and `1` for everything preinstalled, which is what sideloading
       looks like on this console rather than a defect.

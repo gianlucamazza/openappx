@@ -364,8 +364,8 @@ def test_package_family_name_drops_version_and_architecture():
     from openappx.deploy import package_family_name
 
     assert (
-        package_family_name("GianlucaMazza.xllama_1.5.2.789_x64__m2dya3r3x66pp")
-        == "GianlucaMazza.xllama__m2dya3r3x66pp"
+        package_family_name("Contoso.Example_1.5.2.789_x64__m2dya3r3x66pp")
+        == "Contoso.Example__m2dya3r3x66pp"
     )
     with pytest.raises(ValueError, match="not a package full name"):
         package_family_name("nonsense")

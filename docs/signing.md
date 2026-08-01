@@ -41,10 +41,10 @@ ZIP64 EOCD record and its locator. `pack_core` does the same.
 
 ### A real application, repackaged
 
-The strongest test available: xllama's published release (`xllama_1.5.2.789_x64.msix`,
-47.7 MB of real binaries — `onnxruntime.dll`, `DirectML.dll`, `xllama.exe`, a WinMD)
-was unpacked to a layout, repackaged and signed by openappx on Linux, and installed
-on the console.
+The strongest test available: a shipped UWP application built on Windows — 47.7 MB
+of real binaries, an ONNX Runtime, a DirectML, an executable and a WinMD — was
+unpacked to a layout, repackaged and signed by openappx on Linux, and installed on
+the console.
 
 ```
 pack   47.7 MB layout  → 3.9 s   (19,775,489 bytes, vs 19,747,250 from MakeAppx)
@@ -101,9 +101,9 @@ Uploading an unsigned openappx package to an Xbox One in Developer Mode
 
 `0x800B0100` is `TRUST_E_NOSIGNATURE`. Two things follow:
 
-- **No signature, no install.** There is no developer-mode escape hatch; this is
-  why xllama signs with a self-signed certificate on a Windows VM and installs
-  the `.cer` on the console first (`openappx deploy --install-cert`).
+- **No signature, no install.** There is no developer-mode escape hatch. A
+  sideloading workflow has to mint or supply a certificate and install the
+  `.cer` on the device first (`openappx deploy --install-cert`).
 - **The container itself was readable.** Windows opened the package and looked
   for a signature, rather than rejecting it as a malformed archive. That is
   evidence our ZIP and OPC structure are acceptable — but *not* evidence the
