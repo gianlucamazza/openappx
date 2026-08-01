@@ -82,7 +82,11 @@ Block _hashes_ were already correct: they cover uncompressed data.
       by round-tripping a real 19 MB package to byte-identical output.
 - [ ] Launching a repackaged app is unproven: `/api/taskmanager/app` returns
       `0x8d160120` on this console **for the original Windows-built package too**,
-      so the two are at parity but neither has been seen to run.
+      so the two are at parity but neither has been seen to run. A UWP app
+      compiled from scratch on Linux — a different toolchain, a different
+      manifest, a two-page application — installs and fails to launch with the
+      same code, which makes it a property of this console rather than of any
+      packer.
 
 ### Size limits
 
