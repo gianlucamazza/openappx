@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openappx"
 version = "0.6.0"
-description = "Linux-first open-source Appx/MSIX layout validation and packing"
+description = "Build, sign, bundle and install Windows Appx/MSIX packages from Linux"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

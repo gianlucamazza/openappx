@@ -2,9 +2,15 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## Unreleased
+
+- The PyPI summary said "layout validation and packing", which is what this was
+  two releases ago. Metadata is immutable per version, so 0.6.0 keeps the old
+  wording on PyPI; the next release carries the accurate one.
+
 ## 0.6.0 — 2026-08-01
 
-First release published to PyPI.
+First release published to PyPI: `pip install openappx`.
 
 ### Added
 
