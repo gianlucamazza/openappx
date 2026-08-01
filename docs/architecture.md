@@ -1,5 +1,8 @@
 # Architecture
 
+Maintainer and release conventions live in [best-practices.md](best-practices.md);
+this document owns the runtime layer boundaries and extension points.
+
 openappx is a **host-side** toolchain. It does not run on the target OS of the package; it _produces_ packages that target Windows Appx/MSIX installers (desktop, server, or other devices that accept that format).
 
 ## Layers

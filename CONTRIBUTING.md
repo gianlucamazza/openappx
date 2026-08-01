@@ -1,5 +1,9 @@
 # Contributing
 
+The canonical development, security and release workflow is in
+[docs/best-practices.md](docs/best-practices.md). This file keeps the command
+details and project-specific rationale.
+
 ## Setup
 
 ```bash

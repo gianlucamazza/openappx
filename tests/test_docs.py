@@ -110,3 +110,21 @@ def test_environment_variables_documented_are_the_ones_used():
     security = (REPO / "SECURITY.md").read_text()
     for name in (DEVICE_ENV, PFX_ENV, "OPENAPPX_NO_NETWORK"):
         assert name in security or name in (REPO / "CONTRIBUTING.md").read_text(), name
+
+
+def test_agent_guidance_matches_ci_and_exit_code_contract():
+    """Checkout-only guidance must not send maintainers down stale paths."""
+    guidance = (REPO / "CLAUDE.md").read_text()
+    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    assert "Python 3.10–3.14" in guidance
+    assert "Python 3.10–3.13" not in guidance
+    assert 'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]' in workflow
+    assert "`validate` returns `1`" in guidance
+
+
+def test_project_classifiers_cover_the_ci_python_matrix():
+    pyproject = (REPO / "pyproject.toml").read_text()
+    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    versions = re.findall(r'python-version: \["([^"]+)', workflow)
+    for version in versions:
+        assert f'Programming Language :: Python :: {version}' in pyproject

@@ -85,6 +85,8 @@ See [docs/architecture.md](docs/architecture.md) for the layers and extension
 points, and [docs/format.md](docs/format.md) for the container and blockmap rules
 — each recorded with the measurement that established it, since several are not
 what the specification suggests.
+Maintainer workflows and documentation ownership are defined in
+[docs/best-practices.md](docs/best-practices.md).
 
 ---
 

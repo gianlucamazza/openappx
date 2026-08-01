@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it packs, signs and deploys without Windows tooling; it does **not** compile PE binaries. See `docs/roadmap.md` for what is committed vs. research.
+`openappx` — Linux-first, stdlib-only tooling to validate and pack an Appx/MSIX **layout directory** into a `.msix` (OPC ZIP + `AppxBlockMap.xml` + `[Content_Types].xml`). It replaces the `makeappx` slice of a Windows pipeline; it packs, signs and deploys without Windows tooling; it does **not** compile PE binaries. See `docs/roadmap.md` for what is committed vs. research. Use `docs/best-practices.md` as the source-of-truth map for development, security, documentation and release decisions.
 
 ## Commands
 
@@ -22,11 +22,13 @@ pip install -e ".[dev]"                     # then the `openappx` console script
 ./scripts/bootstrap-makemsix.sh             # optional native backend; often fails on new toolchains
 ```
 
-Exit codes are part of the contract: `0` ok, `1` pack/runtime failure, `2` usage or layout-validation failure.
+Exit codes are part of the contract: `0` ok, `1` runtime failure or invalid
+content, `2` usage or a missing/unreadable input path. `validate` returns `1`
+for layout problems; a missing root returns `2`.
 
 `tests/test_pack.py` covers the happy path; `tests/test_format.py` holds the format invariants below; `tests/test_inspect.py` deliberately corrupts packages (via its `rebuild()` helper) and asserts `inspect` catches each one — add a case there whenever you add a check; `tests/test_signature.py` checks the signature reading against Microsoft's own signed packages, downloaded on demand by `tests/conftest.py` into a gitignored cache (`OPENAPPX_NO_NETWORK=1` skips them); `tests/test_deploy.py` runs the Device Portal client against a stub HTTP server, which proves the wire format but never that a real device accepts a package.
 
-Those golden tests are the only thing standing between this project and a plausible-looking misreading of the format. When in doubt about a format detail, get a real signed package and check — do not reason it out. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.13 plus a smoke pack of `examples/minimal-layout`.
+Those golden tests are the only thing standing between this project and a plausible-looking misreading of the format. When in doubt about a format detail, get a real signed package and check — do not reason it out. CI (`.github/workflows/ci.yml`) runs the suite on Python 3.10–3.14 plus a smoke pack of `examples/minimal-layout`.
 
 ## Architecture
 

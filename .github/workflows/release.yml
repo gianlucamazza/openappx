@@ -72,7 +72,7 @@ jobs:
       - name: Attest what built these
         # A signed statement of which repository, workflow and commit produced
         # each file, verifiable by anyone:
-        #   gh attestation verify openappx-0.6.0-py3-none-any.whl \
+        #   gh attestation verify openappx-<version>-py3-none-any.whl \
         #     --repo gianlucamazza/openappx
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/attest-build-provenance@v3
