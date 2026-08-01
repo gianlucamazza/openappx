@@ -75,7 +75,7 @@ jobs:
         #   gh attestation verify openappx-<version>-py3-none-any.whl \
         #     --repo gianlucamazza/openappx
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*
 
