@@ -206,3 +206,14 @@ def test_a_non_pe_executable_is_left_alone(tmp_path: Path, pkg: Path):
     """`inspect` reads real archives: an Executable that is not a PE is not a lie."""
     assert container_problems(tmp_path, pkg, b"MZ" + b"\0" * 200) == []
     assert container_problems(tmp_path, pkg, b"not an exe") == []
+
+
+def test_a_pe_with_an_unknown_optional_header_is_left_alone(tmp_path: Path, pkg: Path):
+    """ROM images and future formats exist; only PE32 and PE32+ are read."""
+    data = bytearray(pe(0x8160))
+    data[0x80 + 0x18 : 0x80 + 0x1A] = (0x107).to_bytes(2, "little")  # PE32-ROM
+    assert container_problems(tmp_path, pkg, bytes(data)) == []
+
+
+def test_a_pe_truncated_before_the_field_is_left_alone(tmp_path: Path, pkg: Path):
+    assert container_problems(tmp_path, pkg, pe(0x8160)[:0x90]) == []
