@@ -1,0 +1,8 @@
+# setuptools puts tests/test_*.py in the sdist on its own, but neither
+# conftest.py nor anything the tests read. Without these, an sdist ships a suite
+# that cannot run: every golden test errors on a missing fixture, test_pack.py
+# packs examples/, and test_docs.py asserts against docs/ and CHANGELOG.md.
+include tests/conftest.py
+recursive-include examples *
+recursive-include docs *.md
+include CHANGELOG.md CONTRIBUTING.md SECURITY.md

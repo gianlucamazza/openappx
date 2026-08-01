@@ -1,0 +1,86 @@
+name: release
+
+# Publishes to PyPI when a v* tag is pushed. Uses Trusted Publishing (OIDC), so
+# there is no API token in this repository's secrets — PyPI is configured to
+# trust this workflow, in this repo, on this environment.
+#
+# Before the first run, create the publisher at
+# https://pypi.org/manage/project/openappx/settings/publishing/ with:
+#   owner gianlucamazza, repo openappx, workflow release.yml, environment pypi
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches the packaged version
+        # A tag that disagrees with pyproject.toml publishes the wrong number
+        # under the right name, and PyPI does not allow re-uploading it.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python - <<'PY'
+          import os, re, pathlib, sys
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          pyproject = pathlib.Path("pyproject.toml").read_text()
+          version = re.search(r'^version = "(.+)"', pyproject, re.M).group(1)
+          if tag != version:
+              sys.exit(f"tag v{tag} but pyproject.toml says {version}")
+          print(f"tag and version agree: {version}")
+          PY
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Verify the artefacts
+        # twine check catches a README that PyPI would refuse to render, which
+        # is otherwise only visible after the upload has already happened.
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+
+      - name: Install the wheel and run the CLI
+        # The sdist can be complete while the wheel is missing a module; only
+        # installing the built artefact proves what users will get.
+        run: |
+          python -m pip install "$(ls dist/*.whl)[sign]"
+          cd "$(mktemp -d)"
+          openappx --help
+          openappx validate --root "$GITHUB_WORKSPACE/examples/minimal-layout"
+          openappx pack --root "$GITHUB_WORKSPACE/examples/minimal-layout" --out example.msix
+          openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out ci
+          openappx sign --package example.msix --pfx ci.pfx
+          openappx inspect --package example.msix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC token Trusted Publishing exchanges for an upload
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

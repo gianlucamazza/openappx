@@ -13,12 +13,21 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-DOCS = sorted(REPO.glob("docs/*.md")) + [
-    REPO / "README.md",
-    REPO / "CHANGELOG.md",
-    REPO / "CONTRIBUTING.md",
-    REPO / "SECURITY.md",
-    REPO / "CLAUDE.md",
+# CLAUDE.md is deliberately absent from the sdist — it addresses an agent
+# working in the checkout, not someone installing the package — so the list is
+# filtered rather than fixed. Everything else here must exist: MANIFEST.in ships
+# it precisely so this suite can run from an unpacked sdist.
+DOCS = [
+    doc
+    for doc in sorted(REPO.glob("docs/*.md"))
+    + [
+        REPO / "README.md",
+        REPO / "CHANGELOG.md",
+        REPO / "CONTRIBUTING.md",
+        REPO / "SECURITY.md",
+        REPO / "CLAUDE.md",
+    ]
+    if doc.is_file()
 ]
 
 SUBCOMMANDS = {"pack", "unpack", "sign", "validate", "inspect", "deploy"}

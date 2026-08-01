@@ -21,6 +21,11 @@ coverage run -m pytest && coverage report   # fails below 90%
 
 CI runs exactly these on Python 3.10 through 3.14.
 
+`ruff format` is **not** part of the contract, deliberately: a couple of places
+here are laid out by hand because the automatic result reads worse — a `zip()`
+over two long expressions, a CLI argument list written two-per-line. Match the
+surrounding style; `ruff check` enforces what actually matters.
+
 ## How this codebase learns things
 
 Nearly every serious defect here was found by comparing against something real —
@@ -28,7 +33,7 @@ a Microsoft-signed package, or a device accepting or rejecting an install — no
 by reasoning about the specification. Two examples, both of which looked correct
 and were not:
 
-- `Block/@Size` is the *compressed* length of a block, not the uncompressed one.
+- `Block/@Size` is the _compressed_ length of a block, not the uncompressed one.
 - Appx requires a ZIP64 end-of-central-directory but rejects ZIP64 extra fields
   on the records. `zipfile` and `unzip` accept either.
 

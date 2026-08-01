@@ -60,3 +60,14 @@ jobs:
 
       - name: No-install invocation path still works
         run: PYTHONPATH=src python -m openappx.pack --root examples/minimal-layout --out /tmp/nopath.msix
+
+      - name: The sdist carries a suite that runs
+        # setuptools ships tests/test_*.py by itself but not conftest.py, nor
+        # examples/ and docs/ that the tests read — so an sdist can look
+        # complete and be untestable. MANIFEST.in fixes that; this proves it.
+        if: matrix.python-version == '3.13'
+        run: |
+          python -m pip install build
+          python -m build --sdist --outdir dist .
+          mkdir -p /tmp/sdist && tar xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          cd /tmp/sdist && OPENAPPX_NO_NETWORK=1 python -m pytest -q

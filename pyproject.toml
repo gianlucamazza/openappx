@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openappx"
-version = "0.5.0"
+version = "0.6.0"
 description = "Linux-first open-source Appx/MSIX layout validation and packing"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,6 +24,12 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/gianlucamazza/openappx"
+Repository = "https://github.com/gianlucamazza/openappx"
+Changelog = "https://github.com/gianlucamazza/openappx/blob/main/CHANGELOG.md"
+Issues = "https://github.com/gianlucamazza/openappx/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "coverage>=7.0", "mypy>=1.11"]

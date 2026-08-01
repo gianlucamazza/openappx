@@ -2,6 +2,39 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## 0.6.0 — 2026-08-01
+
+First release published to PyPI.
+
+### Added
+
+- `inspect` rejects an `Application/@Executable` that is not linked for the app
+  container. MSBuild sets `IMAGE_DLLCHARACTERISTICS_APPCONTAINER` from
+  `<AppContainerApplication>`; cross-compiling you have to ask the linker for
+  it, and forgetting is silent — the binary still runs on a desktop. The flag is
+  readable from the PE stored in the archive, so this is a local check. It
+  reports only the confident no: an `Executable` that is not a parseable PE is
+  left alone.
+- `validate` reports a managed `EntryPoint="ns.Class"` with no `ns.winmd` in the
+  layout. The activation lookup needs that file; without it the package
+  installs and then refuses to start, which reads like an application bug.
+- `validate` reports build artefacts (`*.obj`, `*.pch`, `*.pdb`, …) in a layout.
+  Everything in the directory gets packed, and a stray precompiled header is
+  around 190 MB.
+
+### Fixed
+
+- The manifest greps no longer match the manifest's own comments. These files
+  document themselves, and the attributes worth explaining are exactly the ones
+  being searched for, so a comment mentioning `Executable=` was read as markup.
+
+### Established
+
+- `0x8d160120` on app launch is a property of this console, not of any packer. A
+  UWP application compiled from scratch on Linux — different toolchain,
+  different manifest, two pages of code — installs and fails to launch with the
+  same code that the repackaged and the original Windows-built xllama give.
+
 ## 0.5.0 — 2026-08-01
 
 ### Added

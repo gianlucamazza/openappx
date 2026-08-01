@@ -4,10 +4,16 @@
 
 Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI as an alternative pack backend.
 
-> **Status:** experimental (v0), but the whole chain works: **pack → sign →
-> deploy, from Linux, with no Windows tooling**. A real 47 MB UWP application,
-> repackaged and signed by this project, installs on an Xbox One dev kit. Compiling PE/UWP binaries stays
-> **out of scope** (see [Non-goals](#non-goals), [docs/signing.md](docs/signing.md)).
+> **Status: beta.** The whole chain works and is verified on hardware:
+> **pack → sign → deploy, from Linux, with no Windows tooling**. A real 47 MB
+> UWP application, repackaged and signed by this project, installs on an Xbox
+> One dev kit. Compiling PE/UWP binaries stays **out of scope** (see
+> [Non-goals](#non-goals)) — [uwp-crossbuild](https://github.com/gianlucamazza/uwp-crossbuild)
+> is the companion project that does that part.
+
+```bash
+pip install openappx           # signing needs the extra: openappx[sign]
+```
 
 ---
 
@@ -37,12 +43,12 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 
 ## Non-goals
 
-| Non-goal                                   | Why                                                              |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| Compiling Win32/UWP C++/C# into PE         | Requires MSVC/clang-cl + Windows SDK (or equivalent ABI sysroot) |
-| Emulating Windows or ReactOS as a build OS | Different problem domain                                         |
-| Guaranteeing Store certification           | Store has additional policies beyond package shape               |
-| Replacing Device Portal / full device labs | Deploy helpers may appear later as optional modules              |
+| Non-goal                                   | Why                                                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Compiling Win32/UWP C++/C# into PE         | A separate problem, with a separate tool: [uwp-crossbuild](https://github.com/gianlucamazza/uwp-crossbuild) |
+| Emulating Windows or ReactOS as a build OS | Different problem domain                                                                                    |
+| Guaranteeing Store certification           | Store has additional policies beyond package shape                                                          |
+| Replacing Device Portal / full device labs | Deploy helpers may appear later as optional modules                                                         |
 
 ---
 
@@ -217,7 +223,7 @@ openappx pack --backend makemsix --root … --out …
 ```
 
 It produces **unsigned** packages, exactly like the Python backend: `makemsix pack`
-takes only `-d`/`-p`, and upstream implements signature *validation*, not creation.
+takes only `-d`/`-p`, and upstream implements signature _validation_, not creation.
 See [docs/signing.md](docs/signing.md). The pure-Python backend remains the default
 and is the one covered by the test suite.
 
@@ -255,14 +261,14 @@ openappx/
 
 ## Known limits
 
-| Limit | Detail |
-|-------|--------|
+| Limit             | Detail                                                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation. |
-| Memory | `pack` builds the archive in memory: fine for tens of MB, not for GB. |
-| Running an app | Packages are proven to **install**; launching a repackaged app is unverified (the original Windows-built package fails to launch the same way on the test console). |
-| Timestamping | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here. |
-| Bundles | No `.msixbundle` support. `CodeIntegrity.cat` is verified but not generated. |
-| Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust. |
+| Memory            | `pack` builds the archive in memory: fine for tens of MB, not for GB.                                                                                                                                          |
+| Running an app    | Packages are proven to **install**; launching a repackaged app is unverified (the original Windows-built package fails to launch the same way on the test console).                                            |
+| Timestamping      | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here.                                                                                                                 |
+| Bundles           | No `.msixbundle` support. `CodeIntegrity.cat` is verified but not generated.                                                                                                                                   |
+| Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust.                                                                                                          |
 
 ## Roadmap
 
