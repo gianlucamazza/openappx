@@ -104,3 +104,74 @@ def test_malformed_xml_is_reported(tmp_path: Path):
         '<?xml version="1.0"?><!-- a --b --><Package/>', encoding="utf-8"
     )
     assert any("not well-formed" in p for p in layout_problems(layout))
+
+
+def _managed_manifest(entry: str = "hello.App") -> str:
+    return (
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/>'
+        f'<Applications><Application Id="x" Executable="hello.exe" '
+        f'EntryPoint="{entry}"/></Applications></Package>'
+    )
+
+
+def test_managed_entrypoint_needs_a_winmd_in_the_layout(tmp_path: Path):
+    """Without it the package installs and then refuses to launch."""
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(_managed_manifest(), encoding="utf-8")
+    (layout / "hello.exe").write_bytes(b"MZ")
+    assert any("no .winmd" in p for p in layout_problems(layout))
+
+    (layout / "hello.winmd").write_bytes(b"metadata")
+    assert layout_problems(layout) == []
+
+
+def test_a_winmd_under_the_wrong_name_is_reported(tmp_path: Path):
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(_managed_manifest(), encoding="utf-8")
+    (layout / "hello.exe").write_bytes(b"MZ")
+    (layout / "other.winmd").write_bytes(b"metadata")
+    assert any("expects hello.winmd" in p for p in layout_problems(layout))
+
+
+def test_full_trust_entrypoint_needs_no_winmd(tmp_path: Path):
+    """It names no activatable class, so there is nothing to resolve."""
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        _managed_manifest("Windows.FullTrustApplication").replace(
+            "</Applications>",
+            '</Applications><Capabilities><Capability Name="runFullTrust"/>'
+            "</Capabilities>",
+        ),
+        encoding="utf-8",
+    )
+    (layout / "hello.exe").write_bytes(b"MZ")
+    assert layout_problems(layout) == []
+
+
+def test_build_artefacts_in_the_layout_are_reported(tmp_path: Path):
+    """Everything in the layout gets packed; a precompiled header alone is ~190 MB."""
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/></Package>',
+        encoding="utf-8",
+    )
+    assert layout_problems(layout) == []
+    (layout / "pch.pch").write_bytes(b"x")
+    assert any("build artefacts" in p for p in layout_problems(layout))
+
+
+def test_comments_are_not_grepped(tmp_path: Path):
+    """These manifests document themselves; a comment must not look like markup."""
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    (layout / "AppxManifest.xml").write_text(
+        '<Package><Identity Name="a" Publisher="CN=b" Version="1.0.0.0"/>'
+        '<!-- e.g. Executable="ghost.exe" with Logo="Assets\\Ghost.png" -->'
+        "</Package>",
+        encoding="utf-8",
+    )
+    assert layout_problems(layout) == []

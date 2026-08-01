@@ -17,7 +17,11 @@ def layout_problems(root: Path) -> list[str]:
     if not manifest.is_file():
         return ["missing AppxManifest.xml"]
 
-    text = manifest.read_text(encoding="utf-8", errors="replace")
+    raw = manifest.read_text(encoding="utf-8", errors="replace")
+    # Everything below greps, so a manifest documenting itself — and these
+    # manifests do, the interesting attributes all need explaining — would match
+    # its own comments. Well-formedness still looks at the raw text.
+    text = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
 
     m = re.search(r'Executable="([^"]+)"', text)
     if m:
@@ -32,9 +36,11 @@ def layout_problems(root: Path) -> list[str]:
         if not p.is_file():
             problems.append(f"manifest asset missing: {asset}")
 
-    problems += _wellformed_problems(text)
+    problems += _wellformed_problems(raw)
     problems += _identity_problems(text)
     problems += _capability_problems(text)
+    problems += _entry_point_problems(root, text)
+    problems += _build_artefact_problems(root)
     return problems
 
 
@@ -87,6 +93,48 @@ def _capability_problems(text: str) -> list[str]:
         'EntryPoint="Windows.FullTrustApplication" needs '
         '<rescap:Capability Name="runFullTrust" /> in <Capabilities>'
     ]
+
+
+def _entry_point_problems(root: Path, text: str) -> list[str]:
+    """A managed EntryPoint is resolved against a .winmd that has to be present.
+
+    `EntryPoint="hello.App"` names an activatable class, which the loader looks
+    up in the metadata shipped inside the package. Leave the .winmd out and the
+    package installs and then fails to launch, which reads like an application
+    bug rather than a packaging one. `Windows.FullTrustApplication` is the
+    exception: it names no class.
+    """
+    problems = []
+    for entry in re.findall(r'EntryPoint="([^"]+)"', text):
+        if entry == "Windows.FullTrustApplication" or "." not in entry:
+            continue
+        namespace = entry.split(".")[0]
+        if any(root.glob("*.winmd")) and not (root / f"{namespace}.winmd").is_file():
+            problems.append(
+                f'EntryPoint="{entry}" expects {namespace}.winmd, '
+                f"but the layout has {', '.join(p.name for p in root.glob('*.winmd'))}"
+            )
+        elif not any(root.glob("*.winmd")):
+            problems.append(
+                f'EntryPoint="{entry}" names an activatable class, but the '
+                f"layout carries no .winmd to resolve it against"
+            )
+    return problems
+
+
+# Anything in the layout is packed, so a stray build directory ships silently —
+# a precompiled header alone is around 190 MB.
+_BUILD_ARTEFACTS = ("*.obj", "*.pch", "*.ilk", "*.pdb", "*.lib", "*.exp")
+
+
+def _build_artefact_problems(root: Path) -> list[str]:
+    found = sorted(
+        {p.name for pattern in _BUILD_ARTEFACTS for p in root.rglob(pattern)}
+    )
+    if not found:
+        return []
+    shown = ", ".join(found[:4]) + (" …" if len(found) > 4 else "")
+    return [f"build artefacts in the layout would be packed: {shown}"]
 
 
 def publisher(root: Path) -> str | None:

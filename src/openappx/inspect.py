@@ -54,6 +54,40 @@ def _identity(manifest_text: str) -> dict:
     return {k: attrs[k] for k in keys if k in attrs}
 
 
+# IMAGE_DLLCHARACTERISTICS_APPCONTAINER. A UWP executable without it is refused
+# at install; the flag is what marks the image as runnable inside the container.
+_APPCONTAINER = 0x1000
+
+
+def _appcontainer_problems(exe_name: str, data: bytes) -> list[str]:
+    """Read DllCharacteristics out of a PE stored in the package.
+
+    Only worth reporting when the answer is a confident no. Anything unparseable
+    is left alone: `inspect` looks at real archives, and a manifest may name an
+    Executable that is not a PE at all.
+    """
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return []
+    pe = int.from_bytes(data[0x3C:0x40], "little")
+    if len(data) < pe + 0x18 or data[pe : pe + 4] != b"PE\0\0":
+        return []
+    magic = int.from_bytes(data[pe + 0x18 : pe + 0x1A], "little")
+    # PE32 and PE32+ differ in the standard fields (BaseOfData, and an 8-byte
+    # ImageBase) but the difference cancels out: DllCharacteristics lands at
+    # optional-header offset 0x46 either way.
+    offset = pe + 0x18 + 0x46
+    if magic not in (0x10B, 0x20B) or len(data) < offset + 2:
+        return []
+    characteristics = int.from_bytes(data[offset : offset + 2], "little")
+    if characteristics & _APPCONTAINER:
+        return []
+    return [
+        f"{exe_name}: not linked for the app container "
+        f"(DllCharacteristics=0x{characteristics:04x}, missing 0x1000) — "
+        f"a device refuses to install this"
+    ]
+
+
 def _blockmap_entries(data: bytes, problems: list[str]) -> dict[str, ET.Element]:
     try:
         root = ET.fromstring(data)
@@ -164,7 +198,12 @@ def inspect_package(pkg: Path) -> dict:
             _blockmap_entries(zf.read(BLOCKMAP), problems) if BLOCKMAP in names else {}
         )
         if MANIFEST in names:
-            identity = _identity(zf.read(MANIFEST).decode("utf-8", errors="replace"))
+            manifest_text = zf.read(MANIFEST).decode("utf-8", errors="replace")
+            identity = _identity(manifest_text)
+            for exe in re.findall(r'Executable="([^"]+)"', manifest_text):
+                entry = exe.replace("\\", "/")
+                if entry in names:
+                    problems += _appcontainer_problems(entry, zf.read(entry))
         if CONTENT_TYPES in names:
             _check_content_types(zf.read(CONTENT_TYPES), names, problems)
 
@@ -334,9 +373,7 @@ def render(report: dict) -> str:
                 else " (signature dies with the certificate)"
             )
         )
-        lines.append(
-            "  (digests and publisher only — chain of trust is not evaluated)"
-        )
+        lines.append("  (digests and publisher only — chain of trust is not evaluated)")
     lines.append("")
 
     width = max((len(p["name"]) for p in report["parts"]), default=4)

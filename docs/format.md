@@ -94,6 +94,27 @@ and, at best, a line number.
 | The manifest must be well-formed XML — note that `--` is invalid inside a comment | `0xC00CEE23`, with line and column |
 | `Windows.FullTrustApplication` requires the `runFullTrust` capability             | `0x80080204`, with a line number   |
 | `Identity/@Publisher` must equal the signing certificate subject exactly          | rejected at install                |
+| A managed `EntryPoint` (`ns.Class`) needs `ns.winmd` in the layout                | installs, then fails to launch     |
+
+## The executable must be linked for the app container
+
+An `Application/@Executable` has to carry
+`IMAGE_DLLCHARACTERISTICS_APPCONTAINER` (`0x1000`) in its PE
+`DllCharacteristics`, or the device refuses the package. MSBuild sets it from
+`<AppContainerApplication>true`; cross-compiling, it comes from
+`lld-link /appcontainer`.
+
+`inspect` reads the flag straight out of the PE stored in the archive —
+optional-header offset `0x46`, the same in PE32 and PE32+:
+
+```
+$ objdump -p hello.exe | grep DllCharacteristics
+DllCharacteristics	00009160        # 0x8160 without /appcontainer
+```
+
+It only reports the confident no: an `Executable` that is not a parseable PE is
+left alone, because a package may legitimately carry one (the `minimal-layout`
+example does).
 
 ## Install error codes
 

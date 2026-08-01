@@ -159,3 +159,50 @@ def test_cli_json_is_parseable(pkg: Path, capsys):
 
     assert main(["--package", str(pkg), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["problems"] == []
+
+
+def pe(dll_characteristics: int, *, plus: bool = True) -> bytes:
+    """The smallest PE header carrying a DllCharacteristics field.
+
+    Only the offsets `_appcontainer_problems` reads are real: the MZ signature,
+    e_lfanew, the PE signature, the optional-header magic, and the field itself
+    at optional-header offset 0x46 (the same in PE32 and PE32+).
+    """
+    pe_offset = 0x80
+    data = bytearray(b"\0" * (pe_offset + 0x18 + 0x48))
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = pe_offset.to_bytes(4, "little")
+    data[pe_offset : pe_offset + 4] = b"PE\0\0"
+    magic = 0x20B if plus else 0x10B
+    data[pe_offset + 0x18 : pe_offset + 0x1A] = magic.to_bytes(2, "little")
+    field = pe_offset + 0x18 + 0x46
+    data[field : field + 2] = dll_characteristics.to_bytes(2, "little")
+    return bytes(data)
+
+
+def container_problems(tmp_path: Path, pkg: Path, exe: bytes) -> list[str]:
+    """Only the app-container verdict: swapping a payload also breaks the blockmap."""
+    problems = problems_after(tmp_path, pkg, replace={"app.exe": exe})
+    return [p for p in problems if "app container" in p]
+
+
+def test_executable_without_the_appcontainer_flag_is_reported(
+    tmp_path: Path, pkg: Path
+):
+    """A device refuses to install it; the flag is readable from the archive."""
+    assert any("0x8160" in p for p in container_problems(tmp_path, pkg, pe(0x8160)))
+
+
+def test_executable_with_the_appcontainer_flag_is_accepted(tmp_path: Path, pkg: Path):
+    assert container_problems(tmp_path, pkg, pe(0x9160)) == []
+
+
+def test_pe32_is_read_at_the_same_offset(tmp_path: Path, pkg: Path):
+    assert container_problems(tmp_path, pkg, pe(0x9160, plus=False)) == []
+    assert container_problems(tmp_path, pkg, pe(0x8160, plus=False))
+
+
+def test_a_non_pe_executable_is_left_alone(tmp_path: Path, pkg: Path):
+    """`inspect` reads real archives: an Executable that is not a PE is not a lie."""
+    assert container_problems(tmp_path, pkg, b"MZ" + b"\0" * 200) == []
+    assert container_problems(tmp_path, pkg, b"not an exe") == []
