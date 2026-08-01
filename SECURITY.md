@@ -20,12 +20,19 @@ a device over the Windows Device Portal. Relevant to security:
 ## What verification does and does not prove
 
 `openappx inspect` checks that a package matches the digests its own signature
-covers. It does **not** validate the certificate chain, check expiry or
-revocation, or confirm that `Identity/@Publisher` matches the signer. A package
-reported as consistent may still be signed by anyone at all.
+covers, that `Identity/@Publisher` agrees with the certificate subject, and that
+the certificate is inside its validity dates.
+
+It does **not** validate the certificate chain, or check revocation. **A package
+reported as consistent may still be signed by anyone at all** — including with a
+self-signed certificate minted a minute ago naming any publisher it likes. Trust
+is the installing device's decision, and this tool does not make it.
 
 ## Reporting
 
-Open a GitHub issue for anything affecting package integrity, the traversal
-guard, or credential handling. This is an experimental project with no security
-support commitment; there is no private disclosure channel.
+Use GitHub's private vulnerability reporting (Security → Report a vulnerability)
+for anything affecting package integrity, the traversal guard in `unpack`, or
+credential handling. Anything else can be a normal issue.
+
+This is a beta project maintained in spare time: expect a best-effort response,
+not a service level.
