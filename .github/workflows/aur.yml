@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, e.g. 0.6.1"
+        description: "Version to publish, e.g. 0.6.2"
         required: true
       dry_run:
         description: "Build and check, but do not push"
@@ -74,6 +74,30 @@ jobs:
           chown -R builder:builder .
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
+      - name: Wait for the PyPI sdist
+        if: >-
+          steps.key.outputs.configured == 'true' ||
+          (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          VERSION: ${{ inputs.version || '' }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            version="${VERSION#v}"
+          else
+            version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -n 1)"
+          fi
+          url="https://files.pythonhosted.org/packages/source/o/openappx/openappx-${version}.tar.gz"
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --head "$url" >/dev/null; then
+              echo "PyPI sdist is available: $url"
+              exit 0
+            fi
+            echo "PyPI sdist is not available yet (attempt $attempt/18)"
+            sleep 10
+          done
+          echo "PyPI sdist did not become available: $url" >&2
+          exit 1
+
       - name: SSH to the AUR
         if: steps.key.outputs.configured == 'true'
         env:
@@ -93,6 +117,9 @@ jobs:
           chmod 600 /home/builder/.ssh/id_ed25519 /home/builder/.ssh/known_hosts
 
       - name: Publish
+        if: >-
+          steps.key.outputs.configured == 'true' ||
+          (github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           VERSION: ${{ inputs.version || '' }}
           DRY: ${{ (steps.key.outputs.configured != 'true' || inputs.dry_run) && '--dry-run' || '' }}

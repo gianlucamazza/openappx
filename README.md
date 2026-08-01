@@ -309,7 +309,7 @@ in [docs/roadmap.md](docs/roadmap.md), with the reason for each: streaming pack,
 Tagging is the whole of it — everything downstream keys off the tag:
 
 ```bash
-git tag -a v0.6.1 -m "…" && git push origin v0.6.1
+git tag -a v<version> -m "…" && git push origin v<version>
 ```
 
 1. `release.yml` refuses to continue if the tag and `pyproject.toml` disagree,
@@ -323,8 +323,8 @@ git tag -a v0.6.1 -m "…" && git push origin v0.6.1
 The AUR step runs `packaging/publish-aur.sh`, which is also the manual path:
 
 ```bash
-packaging/publish-aur.sh --version 0.6.1 --dry-run   # build and check only
-packaging/publish-aur.sh --version 0.6.1             # and push to the AUR
+packaging/publish-aur.sh --version <version> --dry-run   # build and check only
+packaging/publish-aur.sh --version <version>             # and push to the AUR
 ```
 
 It rewrites `pkgver`, downloads the sdist to compute its checksum,
@@ -333,7 +333,7 @@ so a hand-edited checksum can never describe a different file. Anyone can check
 what built a release:
 
 ```bash
-gh attestation verify openappx-0.6.1.tar.gz --repo gianlucamazza/openappx
+gh attestation verify openappx-<version>.tar.gz --repo gianlucamazza/openappx
 ```
 
 ## Contributing

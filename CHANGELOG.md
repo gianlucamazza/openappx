@@ -4,6 +4,17 @@ Notable changes per release. Dates are the day the work landed.
 
 ## Unreleased
 
+## 0.6.2 — 2026-08-01
+
+Corrective release following the 0.6.1 publication.
+
+### Fixed
+
+- Keep checkout-only documentation and CI assertions out of the sdist test
+  contract.
+- Make the AUR workflow wait for PyPI availability and skip cleanly when its
+  optional SSH secret is not configured.
+
 ## 0.6.1 — 2026-08-01
 
 Maintenance release aligning the published metadata and maintainer guidance

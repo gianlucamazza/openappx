@@ -114,8 +114,12 @@ def test_environment_variables_documented_are_the_ones_used():
 
 def test_agent_guidance_matches_ci_and_exit_code_contract():
     """Checkout-only guidance must not send maintainers down stale paths."""
-    guidance = (REPO / "CLAUDE.md").read_text()
-    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    guidance_path = REPO / "CLAUDE.md"
+    workflow_path = REPO / ".github" / "workflows" / "ci.yml"
+    if not guidance_path.is_file() or not workflow_path.is_file():
+        pytest.skip("checkout-only guidance and CI workflow are absent from sdist")
+    guidance = guidance_path.read_text()
+    workflow = workflow_path.read_text()
     assert "Python 3.10–3.14" in guidance
     assert "Python 3.10–3.13" not in guidance
     assert 'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]' in workflow
@@ -124,7 +128,10 @@ def test_agent_guidance_matches_ci_and_exit_code_contract():
 
 def test_project_classifiers_cover_the_ci_python_matrix():
     pyproject = (REPO / "pyproject.toml").read_text()
-    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    workflow_path = REPO / ".github" / "workflows" / "ci.yml"
+    if not workflow_path.is_file():
+        pytest.skip("checkout-only CI workflow is absent from sdist")
+    workflow = workflow_path.read_text()
     versions = re.findall(r'python-version: \["([^"]+)', workflow)
     for version in versions:
         assert f'Programming Language :: Python :: {version}' in pyproject
