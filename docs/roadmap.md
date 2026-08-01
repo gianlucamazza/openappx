@@ -80,13 +80,19 @@ Block _hashes_ were already correct: they cover uncompressed data.
 
 - [x] `openappx unpack` — extract a layout a packer can consume again. Verified
       by round-tripping a real 19 MB package to byte-identical output.
-- [ ] Launching a repackaged app is unproven: `/api/taskmanager/app` returns
-      `0x8d160120` on this console **for the original Windows-built package too**,
-      so the two are at parity but neither has been seen to run. A UWP app
-      compiled from scratch on Linux — a different toolchain, a different
-      manifest, a two-page application — installs and fails to launch with the
-      same code, which makes it a property of this console rather than of any
-      packer.
+- [x] **`0x8d160120` on launch is the console's, not ours — settled.**
+      `/api/taskmanager/app` returns it for every sideloaded package on this
+      device, including **Microsoft Edge**, which Microsoft signed and shipped.
+      Four packages with nothing in common but the hardware fail identically:
+      xllama built on Windows with MSBuild, the same xllama repackaged here, a
+      UWP app compiled from scratch on Linux, and Edge. Every one installs; none
+      launches. `/api/app/packagemanager/packages` also reports `AppListEntry: 0`
+      for all four and `1` for everything preinstalled, which is what sideloading
+      looks like on this console rather than a defect.
+
+      What this does *not* prove is that a repackaged app runs correctly once
+      started — only that failing to start it through Device Portal says nothing
+      about the packaging.
 
 ### Size limits
 
@@ -122,8 +128,9 @@ Block _hashes_ were already correct: they cover uncompressed data.
 - **Streaming pack** — the archive is assembled in memory. The writer is the
   most carefully verified code here, so reworking it deserves a session where
   the result can be re-checked on hardware, not the end of one.
-- **Proving a repackaged app launches** — blocked externally: the console
-  refuses to launch the original Windows-built package too.
+- **Proving a repackaged app launches** — blocked externally, and now known to
+  be so: Device Portal cannot launch _any_ sideloaded package on this console,
+  Microsoft Edge included. It would take a device where that path works.
 
 ## Later (research, not committed)
 

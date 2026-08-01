@@ -47,10 +47,17 @@ First release published to PyPI.
 
 ### Established
 
-- `0x8d160120` on app launch is a property of this console, not of any packer. A
-  UWP application compiled from scratch on Linux — different toolchain,
-  different manifest, two pages of code — installs and fails to launch with the
-  same code that the repackaged and the original Windows-built xllama give.
+- `0x8d160120` on app launch is a property of this console, not of any packer —
+  and this is now settled rather than suspected. Device Portal refuses to launch
+  **every** sideloaded package on it, **Microsoft Edge included**. Four packages
+  with nothing in common but the hardware behave identically: xllama built on
+  Windows with MSBuild, the same xllama repackaged here, a UWP application
+  compiled from scratch on Linux, and Edge as Microsoft signed and shipped it.
+  All install, none launches, same code.
+
+  This retires an open question, and does not replace it with a better one: it
+  says nothing about whether a repackaged application runs correctly once
+  started, only that this particular failure cannot be read as evidence.
 
 ## 0.5.0 — 2026-08-01
 
