@@ -116,6 +116,37 @@ It only reports the confident no: an `Executable` that is not a parseable PE is
 left alone, because a package may legitimately carry one (the `minimal-layout`
 example does).
 
+## Bundles
+
+An `.msixbundle` is the same container with different contents. Five things
+differ, and each was found by a device refusing a bundle that looked right.
+
+|                                     | Package                            | Bundle                                |
+| ----------------------------------- | ---------------------------------- | ------------------------------------- |
+| manifest                            | `AppxManifest.xml`                 | `AppxMetadata/AppxBundleManifest.xml` |
+| blockmap covers                     | every payload file                 | **the bundle manifest only**          |
+| payload                             | deflated when it helps             | **always stored**                     |
+| `[Content_Types].xml` `xml` default | `manifest+xml`                     | `bundlemanifest+xml`                  |
+| SIP GUID in the signature           | `4BDFC50A07CEE24DB76E23C839A09FD1` | `B3585F0FDEAA9A4BA43495742D92ECEB`    |
+
+- **`Package/@Offset` is where the payload's data starts** — the local header
+  offset plus `LfhSize`, not the record offset. It is the only number here that
+  cannot be recomputed from the parts, which is why `inspect` checks it.
+- **Application packages carry no `ResourceId`.** Put one there and the device
+  stops matching them by architecture: _"does not have an appropriate
+  application package for x64 architecture"_, with a perfectly good x64 package
+  in the bundle.
+- **A package is a resource package because `Identity/@ResourceId` is set**, not
+  because it has no `<Applications>`. The obvious guess earns `0x80080204`,
+  _"its package type doesn't match the value found in the bundle manifest"_.
+- **Every payload in a signed bundle must be signed too.** Signing only the
+  bundle is answered with `0x800B0100` against the _bundle_, which reads as if
+  the bundle itself were unsigned. Upstream's unsigned unpack fixtures have
+  unsigned payloads, so this only applies once a bundle is signed.
+- A bundle of nothing but resource packages is legal (upstream ships one); a
+  bundle mixing an app and a language pack needs both to carry a `resources.pri`
+  that merges, or registration fails with `0x80070002`.
+
 ## Install error codes
 
 The sequence a package goes through, and what each failure means. Read top to

@@ -139,6 +139,18 @@ openappx validate --root DIR      # check a layout before packing
 openappx unpack --package FILE.msix --out DIR
 openappx inspect --package FILE.msix [--json]
 openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
+openappx bundle --package A.msix --package B.msix --out X.msixbundle
+```
+
+A bundle carries one application across architectures, plus any resource
+packages. **Sign the packages first, then the bundle** — signing only the
+container is rejected as if the container were unsigned:
+
+```bash
+openappx sign --package app-x64.msix --pfx cert.pfx
+openappx sign --package app-x86.msix --pfx cert.pfx
+openappx bundle --package app-x64.msix --package app-x86.msix --out app.msixbundle
+openappx sign --package app.msixbundle --pfx cert.pfx
 ```
 
 `inspect` is the read side of `pack`: it re-derives every block hash from the bytes

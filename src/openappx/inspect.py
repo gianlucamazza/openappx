@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import re
 import sys
@@ -34,8 +35,11 @@ SIGNATURE = "AppxSignature.p7x"
 # Parts the packer generates; they are never listed inside AppxBlockMap.xml.
 # CodeIntegrity.cat is deliberately absent from the blockmap: the signature
 # covers it separately through the AXCI digest.
+BUNDLE_MANIFEST = "AppxMetadata/AppxBundleManifest.xml"
+
 GENERATED = (BLOCKMAP, CONTENT_TYPES, SIGNATURE, CODE_INTEGRITY)
 REQUIRED = (MANIFEST, BLOCKMAP, CONTENT_TYPES)
+BUNDLE_REQUIRED = (BUNDLE_MANIFEST, BLOCKMAP, CONTENT_TYPES)
 
 _METHODS = {zipfile.ZIP_STORED: "store", zipfile.ZIP_DEFLATED: "deflate"}
 
@@ -174,6 +178,74 @@ def _check_content_types(data: bytes, names: list[str], problems: list[str]) -> 
             )
 
 
+def _bundle_problems(
+    zf: zipfile.ZipFile, raw: bytes, signed: bool
+) -> tuple[dict, list[str]]:
+    """Check a bundle manifest against the archive it describes.
+
+    Each `<Package>` names an `Offset` and a `Size` pointing straight into the
+    container, which is how a device reads a payload package without inflating
+    anything. They are the one thing here that cannot be recomputed from the
+    parts alone, so they are what this checks — along with the payload being
+    stored, since a compressed one would make those numbers meaningless.
+    """
+    text = zf.read(BUNDLE_MANIFEST).decode("utf-8", errors="replace")
+    identity = _identity(text)
+    problems: list[str] = []
+    names = {i.filename: i for i in zf.infolist()}
+
+    packages = re.findall(r"<Package\b([^>]*)>", text)
+    if not packages:
+        problems.append(f"{BUNDLE_MANIFEST}: no <Package> elements")
+    listed = set(re.findall(r'<Package\b[^>]*FileName="([^"]*)"', text))
+    for name in sorted(names):
+        # A payload the manifest does not mention is dead weight the device will
+        # never install, and more likely a packaging mistake than a decision.
+        if name.lower().endswith((".appx", ".msix")) and name not in listed:
+            problems.append(
+                f"{name}: in the archive but not listed in the bundle manifest"
+            )
+    for attributes in packages:
+        attrs = dict(re.findall(r'([\w:]+)\s*=\s*"([^"]*)"', attributes))
+        filename = attrs.get("FileName")
+        if not filename:
+            problems.append(f"{BUNDLE_MANIFEST}: <Package> without a FileName")
+            continue
+        info = names.get(filename)
+        if info is None:
+            problems.append(
+                f"{filename}: listed in the bundle manifest but not present"
+            )
+            continue
+        if info.compress_type != zipfile.ZIP_STORED:
+            problems.append(
+                f"{filename}: payload packages must be stored, not deflated"
+            )
+        elif signed:
+            # In a signed bundle each payload carries its own signature too.
+            # Signing only the bundle is answered with 0x800B0100 against the
+            # bundle, which reads as if the bundle itself were unsigned.
+            # Unsigned bundles are left alone: upstream's unpack fixtures are
+            # exactly that, and they are coherent — just not installable.
+            with zipfile.ZipFile(io.BytesIO(zf.read(filename))) as payload:
+                if SIGNATURE not in payload.namelist():
+                    problems.append(f"{filename}: payload package is not signed")
+        if "Size" in attrs and int(attrs["Size"]) != info.file_size:
+            problems.append(
+                f"{filename}: bundle manifest says Size={attrs['Size']} but the "
+                f"archive holds {info.file_size} bytes"
+            )
+        if "Offset" in attrs:
+            header = read_local_header(raw, info.header_offset)
+            actual = info.header_offset + header.size
+            if int(attrs["Offset"]) != actual:
+                problems.append(
+                    f"{filename}: bundle manifest says Offset={attrs['Offset']} but "
+                    f"the data starts at {actual}"
+                )
+    return identity, problems
+
+
 def inspect_package(pkg: Path) -> dict:
     """Return a report dict; empty `report["problems"]` means the package coheres."""
     pkg = pkg.resolve()
@@ -190,13 +262,21 @@ def inspect_package(pkg: Path) -> dict:
     with zipfile.ZipFile(pkg) as zf:
         infos = zf.infolist()
         names = [i.filename for i in infos]
-        for required in REQUIRED:
+        # A bundle carries AppxMetadata/AppxBundleManifest.xml where a package
+        # carries AppxManifest.xml, and its blockmap covers that one file rather
+        # than every payload. Everything else — the container, the signature —
+        # is identical, so only those two things branch.
+        is_bundle = BUNDLE_MANIFEST in names
+        for required in BUNDLE_REQUIRED if is_bundle else REQUIRED:
             if required not in names:
                 problems.append(f"missing required part: {required}")
 
         declared = (
             _blockmap_entries(zf.read(BLOCKMAP), problems) if BLOCKMAP in names else {}
         )
+        if is_bundle:
+            identity, bundle_issues = _bundle_problems(zf, raw, SIGNATURE in names)
+            problems += bundle_issues
         if MANIFEST in names:
             manifest_text = zf.read(MANIFEST).decode("utf-8", errors="replace")
             identity = _identity(manifest_text)
@@ -224,7 +304,11 @@ def inspect_package(pkg: Path) -> dict:
                 "blocks": None,
             }
 
-            if name not in GENERATED:
+            # In a bundle only the bundle manifest is hashed. The payload
+            # packages are not listed at all — each carries its own blockmap and
+            # its own signature, and the bundle vouches for neither.
+            hashed = name == BUNDLE_MANIFEST if is_bundle else name not in GENERATED
+            if hashed:
                 key = package_path(Path(name))
                 el = declared.get(key)
                 if el is None:

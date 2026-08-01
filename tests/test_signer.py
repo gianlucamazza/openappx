@@ -197,3 +197,24 @@ def test_publisher_comparison_tolerates_whitespace(tmp_path: Path):
     assert _normalise_name("CN=A, O=B") == _normalise_name("CN=A,O=B")
     assert _normalise_name("CN=a") == _normalise_name("CN=A")
     assert _normalise_name("CN=A,O=B") != _normalise_name("O=B,CN=A")
+
+
+def test_a_bundle_gets_the_bundle_sip_guid(tmp_path: Path, identity):
+    """Read out of Microsoft's own signed bundle, not from documentation.
+
+    Signing a bundle with the package GUID produces a signature that verifies
+    locally and that a device rejects with 0x800B0100, "no signature was present
+    in the subject" — so nothing but a real install catches it.
+    """
+    from openappx.sign.signer import (
+        APPX_SIP_GUID,
+        BUNDLE_SIP_GUID,
+        spc_indirect_data,
+    )
+
+    blob = b"APPX" + b"\0" * 16
+    package_der, _ = spc_indirect_data(blob)
+    bundle_der, _ = spc_indirect_data(blob, bundle=True)
+    assert APPX_SIP_GUID in package_der
+    assert BUNDLE_SIP_GUID in bundle_der
+    assert len(package_der) == len(bundle_der)  # same structure, one field apart

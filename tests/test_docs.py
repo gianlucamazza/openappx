@@ -30,7 +30,15 @@ DOCS = [
     if doc.is_file()
 ]
 
-SUBCOMMANDS = {"pack", "unpack", "sign", "validate", "inspect", "deploy"}
+SUBCOMMANDS = {
+    "pack",
+    "bundle",
+    "unpack",
+    "sign",
+    "validate",
+    "inspect",
+    "deploy",
+}
 
 
 @pytest.mark.parametrize("doc", DOCS, ids=lambda p: p.name)

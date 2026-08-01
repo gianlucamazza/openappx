@@ -43,8 +43,13 @@ OID_MESSAGE_DIGEST = "1.2.840.113549.1.9.4"
 OID_SHA256 = "2.16.840.1.101.3.4.2.1"
 OID_RSA_ENCRYPTION = "1.2.840.113549.1.1.1"
 
-# The Appx subject-interface-package GUID, verbatim from a signed package.
+# The subject-interface-package GUID, verbatim from signed artefacts. A bundle
+# uses a different one from a package, and getting it wrong is not a subtle
+# failure: the device answers 0x800B0100 "no signature was present in the
+# subject" even though the signature is well formed and verifies locally.
+# Both read out of Microsoft-signed files, not from documentation.
 APPX_SIP_GUID = bytes.fromhex("4BDFC50A07CEE24DB76E23C839A09FD1")
+BUNDLE_SIP_GUID = bytes.fromhex("B3585F0FDEAA9A4BA43495742D92ECEB")
 SIP_VERSION_WORD = bytes.fromhex("01010000")
 
 # AXCI is only present when the package carries a CodeIntegrity catalogue.
@@ -101,7 +106,7 @@ def digest_blob(digests: dict[str, bytes]) -> bytes:
     return bytes(blob)
 
 
-def spc_indirect_data(blob: bytes) -> tuple[bytes, bytes]:
+def spc_indirect_data(blob: bytes, *, bundle: bool = False) -> tuple[bytes, bytes]:
     """Return (full DER SEQUENCE, its content bytes).
 
     The content is returned separately because that — not the whole SEQUENCE —
@@ -111,7 +116,7 @@ def spc_indirect_data(blob: bytes) -> tuple[bytes, bytes]:
         asn1.oid(OID_SPC_SIPINFO),
         asn1.sequence(
             asn1.raw_integer(SIP_VERSION_WORD),
-            asn1.octet_string(APPX_SIP_GUID),
+            asn1.octet_string(BUNDLE_SIP_GUID if bundle else APPX_SIP_GUID),
             *(asn1.integer(0) for _ in range(5)),
         ),
     )
@@ -142,9 +147,16 @@ def _signed_attributes(spc_content: bytes) -> list[bytes]:
 
 
 def build_p7x(
-    blob: bytes, identity: SigningIdentity, timestamp_url: str | None = None
+    blob: bytes,
+    identity: SigningIdentity,
+    timestamp_url: str | None = None,
+    *,
+    bundle: bool = False,
 ) -> bytes:
     """Wrap a digest blob into a signed AppxSignature.p7x.
+
+    `bundle` selects the subject-interface-package GUID. It is not cosmetic: a
+    bundle signed with the package GUID is rejected as unsigned.
 
     With `timestamp_url`, the RSA signature is countersigned by that RFC 3161
     authority so it outlives the certificate. That needs network access and makes
@@ -152,7 +164,7 @@ def build_p7x(
     """
     hashes, serialization, padding, _pkcs12 = _require_cryptography()
 
-    spc_full, spc_content = spc_indirect_data(blob)
+    spc_full, spc_content = spc_indirect_data(blob, bundle=bundle)
     attributes = _signed_attributes(spc_content)
 
     # Signed over a SET; carried in the SignerInfo under [0] IMPLICIT.
@@ -211,15 +223,23 @@ def _normalise_name(name: str) -> str:
 
 
 def package_publisher(package: Path) -> str | None:
+    """`Identity/@Publisher`, from whichever manifest this container carries.
+
+    A bundle keeps its identity in AppxMetadata/AppxBundleManifest.xml, and it
+    is signed the same way a package is — so the publisher check has to look
+    there too, or every signed bundle reports a missing publisher.
+    """
     import zipfile
 
     from openappx.validate import _identity_attribute
 
     with zipfile.ZipFile(package) as zf:
-        if "AppxManifest.xml" not in zf.namelist():
-            return None
-        text = zf.read("AppxManifest.xml").decode("utf-8", errors="replace")
-    return _identity_attribute(text, "Publisher")
+        names = zf.namelist()
+        for manifest in ("AppxManifest.xml", "AppxMetadata/AppxBundleManifest.xml"):
+            if manifest in names:
+                text = zf.read(manifest).decode("utf-8", errors="replace")
+                return _identity_attribute(text, "Publisher")
+    return None
 
 
 def sign_package(
@@ -258,7 +278,11 @@ def sign_package(
     if "AXCD" not in digests:
         raise ValueError(f"{package} already carries a signature")
 
-    p7x = build_p7x(digest_blob(digests), identity, timestamp_url)
+    import zipfile
+
+    with zipfile.ZipFile(package) as zf:
+        is_bundle = "AppxMetadata/AppxBundleManifest.xml" in zf.namelist()
+    p7x = build_p7x(digest_blob(digests), identity, timestamp_url, bundle=is_bundle)
     signed = append_stored_part(archive, SIGNATURE_PART, p7x)
 
     out_package.parent.mkdir(parents=True, exist_ok=True)

@@ -96,12 +96,26 @@ Block _hashes_ were already correct: they cover uncompressed data.
       `pack` now fails with that explanation instead of emitting one.
 - [ ] `pack` holds the whole archive in memory; fine at 47 MB, not at 2 GB.
 
+## v0.6 — Bundles
+
+- [x] `openappx bundle` — combine packages into an `.msixbundle`, reusing the
+      ZIP writer and the signer unchanged. Built the same way as everything else
+      here: read Microsoft's own bundles rather than the schema.
+- [x] `inspect` reads bundles, and reports each of upstream's deliberately-broken
+      reference bundles as the fault its filename claims.
+- [x] **A bundle built and signed here installs on the console.**
+- [x] Five bundle-specific rules established on hardware, none of them in the
+      shape they first appeared: a different SIP GUID, payloads that must each be
+      signed, resource packages identified by `Identity/@ResourceId`, application
+      packages that must _not_ carry a `ResourceId`, and `Offset` pointing at the
+      payload data rather than its record. See [format.md](format.md).
+- [ ] A bundle mixing an application and a language pack registers only if both
+      `resources.pri` files merge. Ours do not yet: `0x80070002` at registration.
+      Building a PRI that expects to be merged is a `makepri` question, not a
+      packaging one.
+
 ## Not done, and why
 
-- **`.msixbundle`** — needed to publish for multiple architectures. Upstream has
-  a reference bundle in its test data, so this is doable the same way everything
-  else here was: copy a working example rather than read the schema. It is the
-  largest remaining piece of work.
 - **Generating `AppxMetadata/CodeIntegrity.cat`** — we verify it (`AXCI`) but do
   not produce it. It is an Authenticode catalogue, a second format to get right,
   and only matters where Device Guard is enforced.
@@ -113,9 +127,6 @@ Block _hashes_ were already correct: they cover uncompressed data.
 
 ## Later (research, not committed)
 
-- Notes on PE cross-compilation sysroots (documentation only unless a maintainer
-  owns it)
-- Bundle (`.msixbundle`) support
 - `AppxMetadata/CodeIntegrity.cat` (the `AXCI` digest is already handled on read)
 
 ## Explicitly not planned as core

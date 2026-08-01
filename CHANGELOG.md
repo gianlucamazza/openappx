@@ -8,6 +8,23 @@ First release published to PyPI.
 
 ### Added
 
+- **`openappx bundle`** — combine `.msix` packages into an `.msixbundle`, the
+  last big gap in the tool. A bundle built and signed here installs on an Xbox
+  One dev kit. `inspect` reads bundles too, and reports Microsoft's own
+  deliberately-broken reference bundles exactly as upstream labels them.
+
+  Five things differ from a package, and every one was found by a device
+  refusing a bundle that looked correct — see [docs/format.md](docs/format.md):
+  - the signature uses a **different SIP GUID**. A bundle signed with the
+    package GUID verifies locally and is rejected as unsigned.
+  - **every payload in a signed bundle must be signed too.** The device blames
+    the bundle, so the error points at the wrong file.
+  - a package is a resource package because `Identity/@ResourceId` is set, not
+    because it has no `<Applications>`.
+  - application packages carry **no** `ResourceId`; one there stops the device
+    matching them by architecture.
+  - `Package/@Offset` is where the payload's _data_ starts, not its record.
+
 - `inspect` rejects an `Application/@Executable` that is not linked for the app
   container. MSBuild sets `IMAGE_DLLCHARACTERISTICS_APPCONTAINER` from
   `<AppContainerApplication>`; cross-compiling you have to ask the linker for

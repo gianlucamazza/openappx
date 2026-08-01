@@ -28,7 +28,8 @@ def fetch_upstream(name: str) -> Path:
         return target
     if os.environ.get("OPENAPPX_NO_NETWORK"):
         pytest.skip("network tests disabled via OPENAPPX_NO_NETWORK")
-    CACHE.mkdir(exist_ok=True)
+    # `name` may name a subdirectory (bundles/…), so create the whole path.
+    target.parent.mkdir(parents=True, exist_ok=True)
     try:
         with urllib.request.urlopen(UPSTREAM + name, timeout=30) as response:
             data = response.read()
@@ -54,3 +55,36 @@ def tampered_blockmap() -> Path:
 def with_code_integrity() -> Path:
     """A package carrying AppxMetadata/CodeIntegrity.cat, i.e. an AXCI digest."""
     return fetch_upstream("SignedTamperedCodeIntegrity-TRUST_E_BAD_DIGEST.appx")
+
+
+@pytest.fixture(scope="session")
+def reference_bundle() -> Path:
+    """A well-formed Microsoft bundle: two application packages, no signature."""
+    return fetch_upstream("bundles/ContainsNeutralAndX86AppPackages.appxbundle")
+
+
+@pytest.fixture(scope="session")
+def signed_reference_bundle() -> Path:
+    """The same container shape, signed — the signature format does not change."""
+    return fetch_upstream("bundles/SignedUntrustedCert-CERT_E_CHAINING.appxbundle")
+
+
+@pytest.fixture(scope="session")
+def bundle_with_wrong_offset() -> Path:
+    """Upstream's deliberately-broken bundle: a Package/@Offset that is off."""
+    return fetch_upstream("bundles/ManifestPackageHasInvalidOffset.appxbundle")
+
+
+@pytest.fixture(scope="session")
+def bundle_with_wrong_size() -> Path:
+    return fetch_upstream("bundles/ManifestPackageHasIncorrectSize.appxbundle")
+
+
+@pytest.fixture(scope="session")
+def bundle_with_compressed_payload() -> Path:
+    return fetch_upstream("bundles/PayloadPackageIsCompressed.appxbundle")
+
+
+@pytest.fixture(scope="session")
+def bundle_with_unlisted_payload() -> Path:
+    return fetch_upstream("bundles/PayloadPackageNotListedInManifest.appxbundle")
