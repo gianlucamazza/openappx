@@ -18,6 +18,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # provenance attestation
+      attestations: write
     steps:
       - uses: actions/checkout@v5
 
@@ -64,6 +68,16 @@ jobs:
           openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out ci
           openappx sign --package example.msix --pfx ci.pfx
           openappx inspect --package example.msix
+
+      - name: Attest what built these
+        # A signed statement of which repository, workflow and commit produced
+        # each file, verifiable by anyone:
+        #   gh attestation verify openappx-0.6.0-py3-none-any.whl \
+        #     --repo gianlucamazza/openappx
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/*
 
       - uses: actions/upload-artifact@v4
         with:

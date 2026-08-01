@@ -16,6 +16,7 @@ standard library only — signing is the one optional extra.
 
 ```bash
 pip install openappx           # signing needs the extra: openappx[sign]
+yay -S python-openappx         # Arch, from the AUR
 ```
 
 ---
@@ -300,6 +301,38 @@ in [docs/roadmap.md](docs/roadmap.md), with the reason for each: streaming pack,
 `CodeIntegrity.cat`, and merged resource bundles.
 
 ---
+
+## Releasing
+
+Tagging is the whole of it — everything downstream keys off the tag:
+
+```bash
+git tag -a v0.6.1 -m "…" && git push origin v0.6.1
+```
+
+1. `release.yml` refuses to continue if the tag and `pyproject.toml` disagree,
+   builds, runs `twine check`, installs the built wheel and drives the CLI
+   through pack/sign/inspect, attests build provenance, and uploads to PyPI via
+   Trusted Publishing. No API token lives in this repository.
+2. `aur.yml` then updates the AUR package — triggered by the release finishing
+   rather than by the tag, because the PKGBUILD builds from the PyPI sdist and
+   would otherwise race the upload.
+
+The AUR step runs `packaging/publish-aur.sh`, which is also the manual path:
+
+```bash
+packaging/publish-aur.sh --version 0.6.1 --dry-run   # build and check only
+packaging/publish-aur.sh --version 0.6.1             # and push to the AUR
+```
+
+It rewrites `pkgver`, downloads the sdist to compute its checksum,
+regenerates `.SRCINFO` and builds the package with its tests before pushing —
+so a hand-edited checksum can never describe a different file. Anyone can check
+what built a release:
+
+```bash
+gh attestation verify openappx-0.6.1.tar.gz --repo gianlucamazza/openappx
+```
 
 ## Contributing
 
