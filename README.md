@@ -1,8 +1,11 @@
 # openappx
 
-**Linux-first, open-source tooling for Appx / MSIX package layout, validation, and packing.**
+**Build, sign, bundle and install Windows app packages — from Linux, without Windows tooling.**
 
-Build and inspect Windows app packages from a POSIX host without Visual Studio for the _packaging_ stage. Written in Python (stdlib-first). Optional integration with the upstream [MSIX SDK](https://github.com/microsoft/msix-packaging) `makemsix` CLI as an alternative pack backend.
+`openappx` replaces the `makeappx` and `signtool` half of a Windows app pipeline:
+it turns a layout directory into a signed `.msix` or `.msixbundle`, checks it,
+and installs it on a real device over the Windows Device Portal. Pure Python,
+standard library only — signing is the one optional extra.
 
 > **Status: beta.** The whole chain works and is verified on hardware:
 > **pack → sign → deploy, from Linux, with no Windows tooling**. A real 47 MB
@@ -24,9 +27,13 @@ pip install openappx           # signing needs the extra: openappx[sign]
 | A **layout directory** (manifest, assets, binaries, payload files) | A valid **`.msix` / Appx-style ZIP** with `AppxBlockMap.xml` and `[Content_Types].xml` |
 | A code-signing certificate (or none — one can be minted)           | A **signed** `.msix` that a real device installs                                       |
 | A signed `.msix` from anyone                                       | Verification that the package matches the digests its signature covers                 |
+| Packages for several architectures                                 | An `.msixbundle` carrying them all                                                     |
+| A device in developer mode                                         | Installation over the Windows Device Portal, and the error if it is refused            |
 | CI on Linux                                                        | Deterministic pack tests without Windows                                               |
 
-It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or complements) the **makeappx / Appx packaging** slice of a Windows app pipeline.
+It is **not** a replacement for MSBuild and the Windows SDK: it does not compile
+anything. It replaces the packaging half — `makeappx`, `signtool`, and the
+sideload step — of a Windows app pipeline.
 
 ---
 
@@ -48,7 +55,7 @@ It is **not** a full replacement for MSBuild + Windows SDK. It replaces (or comp
 | Compiling Win32/UWP C++/C# into PE         | A separate problem, with a separate tool: [uwp-crossbuild](https://github.com/gianlucamazza/uwp-crossbuild) |
 | Emulating Windows or ReactOS as a build OS | Different problem domain                                                                                    |
 | Guaranteeing Store certification           | Store has additional policies beyond package shape                                                          |
-| Replacing Device Portal / full device labs | Deploy helpers may appear later as optional modules                                                         |
+| Replacing a device lab                     | `deploy` drives one device over Device Portal; orchestration is yours                                       |
 
 ---
 
@@ -161,13 +168,13 @@ covers and reports any mismatch — see [docs/signing.md](docs/signing.md). It w
 packages produced by any tool, not just openappx.
 
 ```text
-Package: /tmp/example.msix (2916 bytes)
-Identity: Name=OpenAppx.Example  Publisher=CN=OpenAppx-Example  Version=0.1.0.0
+Package: /tmp/example.msix (3139 bytes)
+Identity: Name=OpenAppx.Example  Publisher=CN=OpenAppx-Example  Version=0.1.0.0  ProcessorArchitecture=x64
 Signature: absent
 
 Part                        Size      Stored   Method  Blocks
 app.exe                       31          31    store       1
-AppxManifest.xml            1265         590  deflate       1
+AppxManifest.xml            1659         737  deflate       1
 Assets/StoreLogo.png          67          66  deflate       1
 [Content_Types].xml         1061        1061    store       -
 AppxBlockMap.xml             610         610    store       -
@@ -245,28 +252,27 @@ and is the one covered by the test suite.
 
 ```
 openappx/
-├── README.md
-├── LICENSE
-├── pyproject.toml
-├── docs/
-│   ├── architecture.md
-│   ├── signing.md
-│   └── roadmap.md
 ├── src/openappx/
+│   ├── cli.py         # the `openappx` entry point; dispatches lazily
 │   ├── blockmap.py    # block hashing, XML rendering, ZIP header parsing
-│   ├── pack_core.py   # pack backends (python, makemsix)
+│   ├── pack_core.py   # the ZIP writer and the two pack backends
 │   ├── pack.py        # pack CLI
+│   ├── bundle.py      # .msixbundle assembly
 │   ├── validate.py    # pre-pack layout checks
-│   ├── inspect.py     # post-pack package checks
+│   ├── inspect.py     # post-pack package and bundle checks
 │   ├── unpack.py      # extract a layout back out of a package
-│   ├── deploy.py      # Windows Device Portal client (install/list/uninstall)
-│   ├── sign/          # digests, DER encoder, signature creation
-├── tests/
-├── scripts/
+│   ├── deploy.py      # Windows Device Portal client
+│   └── sign/          # digests, DER encoder, signature creation
+├── docs/
+│   ├── architecture.md   # the layers and where to extend them
+│   ├── format.md         # container and blockmap rules, with their evidence
+│   ├── signing.md        # what AppxSignature.p7x contains, decoded
+│   └── roadmap.md        # done, not done, and why
 ├── examples/
-│   ├── minimal-layout/   # desktop, full-trust; not installable (placeholder exe)
+│   ├── minimal-layout/   # desktop, full-trust; placeholder exe, so it never installs
 │   └── resource-only/    # installs on a device — used to prove the chain
-└── CHANGELOG.md
+├── tests/
+└── scripts/
 ```
 
 ---
@@ -277,14 +283,17 @@ openappx/
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation. |
 | Memory            | `pack` builds the archive in memory: fine for tens of MB, not for GB.                                                                                                                                          |
-| Running an app    | Packages are proven to **install**; launching a repackaged app is unverified (the original Windows-built package fails to launch the same way on the test console).                                            |
+| Running an app    | Packages are proven to **install**. None has been seen to run: the test console refuses to launch every sideloaded package, Microsoft Edge included, so it cannot answer the question either way.              |
 | Timestamping      | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here.                                                                                                                 |
-| Bundles           | No `.msixbundle` support. `CodeIntegrity.cat` is verified but not generated.                                                                                                                                   |
+| Bundles           | A bundle mixing an application and a language pack registers only if both `resources.pri` merge; ours do not yet (`0x80070002`).                                                                               |
+| CodeIntegrity     | `AppxMetadata/CodeIntegrity.cat` is verified when present, never generated. It matters only where Device Guard is enforced.                                                                                    |
 | Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust.                                                                                                          |
 
 ## Roadmap
 
-High level: solid pack → sign → optional device deploy helpers → research notes on cross-ABI (not a commitment). Details: [docs/roadmap.md](docs/roadmap.md).
+Pack, sign, bundle and deploy are done and verified on hardware. What remains is
+in [docs/roadmap.md](docs/roadmap.md), with the reason for each: streaming pack,
+`CodeIntegrity.cat`, and merged resource bundles.
 
 ---
 
