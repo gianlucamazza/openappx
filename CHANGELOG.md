@@ -18,6 +18,10 @@ Notable changes per release. Dates are the day the work landed.
   Spill-to-temp rather than data descriptors, which Appx readers here refuse
   by design. `sign` and `bundle` still buffer whole archives — each is a
   rewrite of verified code that deserves its own session (see the roadmap).
+- **Digest verification no longer reads the package whole.** `compute_digests`
+  hashes AXPC/AXCD in chunks straight off the file and reads only the three
+  small named parts through `zipfile`; the golden tests against Microsoft's
+  own signed packages pass unchanged.
 
 ### Added
 
