@@ -4,6 +4,21 @@ Notable changes per release. Dates are the day the work landed.
 
 ## Unreleased
 
+### Changed
+
+- **`pack` streams.** One pass reads each payload file in 64 KiB blocks —
+  hashing, CRC and per-block deflate built as it goes, the compressed stream
+  spilled to a temporary directory beside the output — and a second pass
+  copies spill or source into the archive. Peak memory is a few blocks
+  whatever the layout weighs: ~19 MB where the in-memory writer took ~420 MB
+  on a 200 MB layout, and slightly faster. The output is **byte-identical**:
+  the in-memory primitives stay in the tree as the reference implementation
+  (`bundle.py` still writes through them) and `tests/test_streaming.py` holds
+  the two writers to the same bytes on a layout exercising every branch.
+  Spill-to-temp rather than data descriptors, which Appx readers here refuse
+  by design. `sign` and `bundle` still buffer whole archives — each is a
+  rewrite of verified code that deserves its own session (see the roadmap).
+
 ### Added
 
 - **`examples/resource-language`, a checked-in resource package.** The

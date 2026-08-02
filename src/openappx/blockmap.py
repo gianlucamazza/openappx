@@ -6,6 +6,7 @@ import base64
 import hashlib
 import os
 import struct
+import tempfile
 import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -164,6 +165,73 @@ def prepare_file(name: str, data: bytes, level: int = 6) -> PreparedFile:
         blocks=FileBlocks(name, len(data), hashes, None),
         payload=data,
         deflated=False,
+    )
+
+
+@dataclass(frozen=True)
+class StreamedFile:
+    """A payload file hashed and compressed in one pass, its stream on disk.
+
+    The in-memory counterpart of `PreparedFile`: same blockmap entry, same
+    store-vs-deflate decision, but the deflate stream lives in a spill file so
+    peak memory is one block whatever the file size. A stored part drops its
+    spill and is re-read from `source` when the archive is written — the same
+    second read `pack_python` has always done.
+    """
+
+    blocks: FileBlocks
+    crc: int
+    payload_size: int  # compressed size when deflated, the file's size otherwise
+    deflated: bool
+    source: Path
+    spill: Path | None  # the deflate stream; None for stored parts
+
+
+def prepare_file_streamed(
+    name: str, path: Path, spill_dir: Path, level: int = 6
+) -> StreamedFile:
+    """`prepare_file`, one 64 KiB block at a time.
+
+    Hashes, CRC and the deflate stream are all built as the file is read once.
+    The compressor is constructed exactly as `deflate_blocks` constructs it and
+    flushed per block the same way, so the spilled stream is bit-identical to
+    the in-memory one — the golden test in tests/test_streaming.py holds the
+    two writers to the same bytes.
+    """
+    compressor = zlib.compressobj(level, zlib.DEFLATED, -zlib.MAX_WBITS)
+    hashes: list[bytes] = []
+    compressed_sizes: list[int] = []
+    crc = 0
+    size = 0
+    stream_size = 0
+    fd, spill_name = tempfile.mkstemp(dir=spill_dir, suffix=".deflate")
+    with os.fdopen(fd, "wb") as spill, open(path, "rb") as source:
+        while True:
+            chunk = source.read(BLOCK_SIZE)
+            if not chunk:
+                break
+            size += len(chunk)
+            crc = zlib.crc32(chunk, crc)
+            hashes.append(hashlib.sha256(chunk).digest())
+            block = compressor.compress(chunk) + compressor.flush(zlib.Z_FULL_FLUSH)
+            compressed_sizes.append(len(block))
+            stream_size += len(block)
+            spill.write(block)
+        tail = compressor.flush()
+        stream_size += len(tail)
+        spill.write(tail)
+
+    # prepare_file's decision, taken on sizes: deflate only when it pays off.
+    deflated = size > 0 and stream_size < size
+    if not deflated:
+        os.unlink(spill_name)
+    return StreamedFile(
+        blocks=FileBlocks(name, size, hashes, compressed_sizes if deflated else None),
+        crc=crc & 0xFFFFFFFF,
+        payload_size=stream_size if deflated else size,
+        deflated=deflated,
+        source=path,
+        spill=Path(spill_name) if deflated else None,
     )
 
 
