@@ -2,6 +2,15 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## Unreleased
+
+### Fixed
+
+- **`sign/__init__.py` and `pack --cert` still claimed signing was impossible.**
+  Both texts predate v0.3's signer and survived it; the docstring now describes
+  what `openappx sign` actually does, and the pack-time refusal points at it
+  instead of at a capability gap that no longer exists.
+
 ## 0.7.0 — 2026-10-01
 
 ### Added
