@@ -4,6 +4,23 @@ Notable changes per release. Dates are the day the work landed.
 
 ## Unreleased
 
+The first time `deploy --start` launched anything on a real console — because
+until now it never could. Found end to end against an Xbox Series S
+(OS 26100.8866), each with a device-verified test.
+
+### Fixed
+
+- **The package family name joined name and hash with a double underscore**
+  (`Name__hash`), so every AUMID named nothing and every launch of every app —
+  the console's own Dev Home included — failed as an opaque 0x8D160120. The
+  double underscore belongs to the *full* name, where it stands for an empty
+  resource id; the device's own PackageRelativeId records read `Name_hash!App`.
+- **`--start` now sends the base64 `package` parameter beside `appid`.** The
+  Xbox portal answers an appid-only request with the same 0x8D160120; desktop
+  builds accept both forms.
+- **`--stop` base64-encodes its `package` parameter.** Sent raw, the device
+  answers "Failed to decode expected base64 encoded parameter: package".
+
 ## 0.6.2 — 2026-08-01
 
 Corrective release following the 0.6.1 publication.

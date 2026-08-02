@@ -61,11 +61,19 @@ DEFAULT_TIMEOUT = 300
 
 
 def package_family_name(package_full_name: str) -> str:
-    """`Name_1.2.3.4_x64__hash` -> `Name__hash`, the identity WDP launches by."""
+    """`Name_1.2.3.4_x64__hash` -> `Name_hash`, the identity WDP launches by.
+
+    A single underscore joins name and publisher hash: the double one exists
+    only inside a *full* name, where it stands for an empty resource id. The
+    device's own records agree — PackageRelativeId for this family reads
+    `Name_hash!App`. With `Name__hash` the AUMID names nothing, and the Xbox
+    portal answers 0x8D160120 "Failed to launch" rather than "no such app"
+    (observed on OS 26100.8866 against every app on the console).
+    """
     match = re.fullmatch(r"(.+?)_[\d.]+_[^_]*__(.+)", package_full_name)
     if not match:
         raise ValueError(f"not a package full name: {package_full_name}")
-    return f"{match.group(1)}__{match.group(2)}"
+    return f"{match.group(1)}_{match.group(2)}"
 
 
 class DeviceError(RuntimeError):
@@ -327,15 +335,27 @@ class DevicePortal:
         """
         aumid = f"{package_family_name(package_full_name)}!{app_id}"
         encoded = base64.b64encode(aumid.encode("utf-8")).decode("ascii")
+        # `package` is not optional on every device: the Xbox portal (observed
+        # on OS 26100.8866) answers 0x8D160120 "Failed to launch" to an
+        # appid-only request — for every app on the console, its own Dev Home
+        # included — and launches the same aumid once the full name rides
+        # along. Desktop builds accept both forms.
+        package = base64.b64encode(package_full_name.encode("utf-8")).decode("ascii")
         request = urllib.request.Request(
-            self._url(TASKMANAGER_PATH, {"appid": encoded}), data=b"", method="POST"
+            self._url(TASKMANAGER_PATH, {"appid": encoded, "package": package}),
+            data=b"",
+            method="POST",
         )
         request.add_header("Content-Length", "0")
         self._open(request)
 
     def stop_app(self, package_full_name: str) -> None:
+        # Base64 like every taskmanager parameter: sent raw, the device answers
+        # "Failed to decode expected base64 encoded parameter: package"
+        # (observed on Xbox OS 26100.8866).
+        package = base64.b64encode(package_full_name.encode("utf-8")).decode("ascii")
         request = urllib.request.Request(
-            self._url(TASKMANAGER_PATH, {"package": package_full_name}), method="DELETE"
+            self._url(TASKMANAGER_PATH, {"package": package}), method="DELETE"
         )
         self._open(request)
 

@@ -332,8 +332,14 @@ def test_cli_reports_an_install_that_never_finishes(
     RECEIVED["state_status"] = 204  # still running, forever
     code = main(
         [
-            "--device", stub, "--user", "admin",
-            "--package", str(package), "--timeout", "1",
+            "--device",
+            stub,
+            "--user",
+            "admin",
+            "--package",
+            str(package),
+            "--timeout",
+            "1",
         ]
     )
     assert code == 1
@@ -363,25 +369,38 @@ def test_tls_context_disables_verification_explicitly():
 def test_package_family_name_drops_version_and_architecture():
     from openappx.deploy import package_family_name
 
+    # A single underscore joins name and hash: the double one belongs to the
+    # full name only. The device's own PackageRelativeId records agree
+    # (`Name_hash!App`); with the double form the AUMID names nothing and the
+    # Xbox portal fails every launch with 0x8D160120.
     assert (
         package_family_name("Contoso.Example_1.5.2.789_x64__m2dya3r3x66pp")
-        == "Contoso.Example__m2dya3r3x66pp"
+        == "Contoso.Example_m2dya3r3x66pp"
     )
     with pytest.raises(ValueError, match="not a package full name"):
         package_family_name("nonsense")
 
 
-def test_start_app_sends_the_base64_aumid(portal: DevicePortal):
+def test_start_app_sends_the_base64_aumid_and_package(portal: DevicePortal):
     import base64
 
     portal.start_app("Test_1.0.0.0_x64__abc", "app")
-    expected = base64.b64encode(b"Test__abc!app").decode()
+    expected = base64.b64encode(b"Test_abc!app").decode()
     assert f"appid={urllib.parse.quote(expected, safe='')}" in RECEIVED["path"]
+    # Not optional on every device: the Xbox portal ignores an appid-only
+    # request into 0x8D160120, and launches once the full name rides along.
+    package = base64.b64encode(b"Test_1.0.0.0_x64__abc").decode()
+    assert f"package={urllib.parse.quote(package, safe='')}" in RECEIVED["path"]
 
 
 def test_stop_app_targets_the_package(portal: DevicePortal):
+    import base64
+
     portal.stop_app("Test_1.0.0.0_x64__abc")
-    assert "package=Test_1.0.0.0_x64__abc" in RECEIVED["deleted"]
+    # Base64 like every taskmanager parameter — raw, the Xbox portal answers
+    # "Failed to decode expected base64 encoded parameter: package".
+    package = base64.b64encode(b"Test_1.0.0.0_x64__abc").decode()
+    assert f"package={urllib.parse.quote(package, safe='')}" in RECEIVED["deleted"]
 
 
 def test_cli_start_requires_an_app_id(stub: str, monkeypatch, capsys):
