@@ -127,8 +127,15 @@ Block _hashes_ were already correct: they cover uncompressed data.
 ## Not done, and why
 
 - **Generating `AppxMetadata/CodeIntegrity.cat`** — we verify it (`AXCI`) but do
-  not produce it. It is an Authenticode catalogue, a second format to get right,
-  and only matters where Device Guard is enforced.
+  not produce it. The format is now dissected rather than guessed at —
+  `tests/test_catalog.py` pins the structure of Microsoft's own catalogue, and
+  docs/signing.md records it — and the dissection is exactly why the writer
+  stays unwritten: the members are **PE Authenticode digests** (SHA-1 and
+  SHA-256 per PE payload, CheckSum and security directory excluded), so a
+  writer needs a correct Authenticode hasher for arbitrary PEs, and only a
+  device with Device Guard enforced could say whether the result is accepted.
+  A structurally plausible catalogue that enforcement rejects is the exact
+  failure mode this project refuses to ship.
 - **Streaming sign and bundle** — `pack` streams now, held byte-identical to
   the old writer by a golden test; `sign` and `bundle` still buffer whole
   archives. Both walk and rewrite verified ZIP structure, so each rework
@@ -141,7 +148,10 @@ Block _hashes_ were already correct: they cover uncompressed data.
 
 ## Later (research, not committed)
 
-- `AppxMetadata/CodeIntegrity.cat` (the `AXCI` digest is already handled on read)
+- Generating `AppxMetadata/CodeIntegrity.cat` (read-side `AXCI` is handled; the
+  format is dissected in `tests/test_catalog.py` and docs/signing.md; the
+  writer waits on an Authenticode PE hasher and Device Guard hardware to
+  verify against — see "Not done, and why")
 
 ## Explicitly not planned as core
 
