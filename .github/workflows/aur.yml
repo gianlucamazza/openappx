@@ -49,7 +49,7 @@ jobs:
             python-build python-installer python-setuptools python-wheel \
             python-pytest python-cryptography
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # A workflow_run event may not expose a tag as head_branch. The SHA is
           # unambiguous and keeps the PKGBUILD script tied to the release commit.
