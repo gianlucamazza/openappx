@@ -4,6 +4,16 @@ Notable changes per release. Dates are the day the work landed.
 
 ## Unreleased
 
+### Added
+
+- **`examples/resource-language`, a checked-in resource package.** The
+  language-pack shape: `Identity/@ResourceId` and no `ProcessorArchitecture`,
+  `<Properties><ResourcePackage>true`, and — deliberately — the same `Name`
+  and `Publisher` as `examples/minimal-layout`, so packing both and bundling
+  them exercises the mixed-bundle path the README now walks through. The
+  `resources.pri` merge needed to *register* such a bundle remains makepri's
+  side of the fence (see the roadmap).
+
 ### Fixed
 
 - **`sign/__init__.py` and `pack --cert` still claimed signing was impossible.**

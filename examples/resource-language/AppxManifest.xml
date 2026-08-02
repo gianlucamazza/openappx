@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A resource package: the language-pack shape that goes in a bundle beside an
+  application package. What makes it one - measured against a device, see
+  bundle.py - is Identity/@ResourceId; Microsoft's own resource packages pair
+  it with <Properties><ResourcePackage>true and carry no ProcessorArchitecture.
+  Classified any other way, a device answers 0x80080204 "its package type
+  doesn't match the value found in the bundle manifest".
+
+  Identity/@Name and @Publisher deliberately equal examples/minimal-layout's:
+  a resource package shares the application's identity - that is how a device
+  resolves it inside a bundle - and `openappx bundle` reports payloads whose
+  identities disagree.
+
+  Known limit (docs/roadmap.md): a bundle mixing an application and a language
+  pack registers only if their resources.pri files merge. Building a PRI that
+  expects to be merged is a makepri question, not a packaging one.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap">
+
+  <Identity
+    Name="OpenAppx.Example"
+    Publisher="CN=OpenAppx-Example"
+    Version="0.1.0.0"
+    ResourceId="language-de" />
+
+  <Properties>
+    <DisplayName>openappx language resource example</DisplayName>
+    <PublisherDisplayName>openappx</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <ResourcePackage>true</ResourcePackage>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0"
+                        MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="de-DE" />
+  </Resources>
+</Package>

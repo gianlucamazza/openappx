@@ -121,11 +121,19 @@ def test_resource_only_example_has_no_executable():
     assert root.find(f".//{ns}TargetDeviceFamily").get("Name") == "Windows.Universal"
 
 
+RESOURCE_LANGUAGE = REPO / "examples" / "resource-language"
+
+
+def test_resource_language_example_is_valid():
+    """The resource-package example the README's bundle walkthrough packs."""
+    assert layout_problems(RESOURCE_LANGUAGE) == []
+
+
 def test_example_manifests_are_well_formed_xml():
     """XML forbids `--` inside comments; a device reports that as 0xC00CEE23."""
     import xml.etree.ElementTree as ET
 
-    for layout in (EXAMPLE, RESOURCE_ONLY):
+    for layout in (EXAMPLE, RESOURCE_ONLY, RESOURCE_LANGUAGE):
         ET.parse(layout / "AppxManifest.xml")
 
 
