@@ -167,6 +167,23 @@ def test_a_package_without_a_resource_id_is_an_application(tmp_path: Path):
     assert entry.architecture == "x64"
 
 
+def test_the_resource_language_example_bundles_beside_minimal_layout(tmp_path: Path):
+    """The checked-in example, not a synthesised package: what the README's
+    bundle walkthrough packs must classify as a resource package and bundle
+    cleanly beside minimal-layout, whose identity it deliberately shares."""
+    app = pack_python(EXAMPLE, tmp_path / "app.msix")
+    res = pack_python(
+        REPO / "examples" / "resource-language", tmp_path / "lang-de.msix"
+    )
+    entry = read_package(res)
+    assert entry.kind == "resource"
+    assert entry.resource_id == "language-de"
+    assert entry.architecture is None
+    assert entry.languages == ("de-DE",)
+    out = build_bundle([app, res], tmp_path / "app.msixbundle")
+    assert inspect_package(out)["problems"] == []
+
+
 def test_the_bundle_version_zeroes_the_revision():
     """What MakeAppx does when not told otherwise."""
 

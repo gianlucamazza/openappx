@@ -89,7 +89,7 @@ def test_version_is_consistent():
 
 
 def test_examples_referenced_by_docs_exist():
-    for name in ("minimal-layout", "resource-only"):
+    for name in ("minimal-layout", "resource-only", "resource-language"):
         assert (REPO / "examples" / name / "AppxManifest.xml").is_file()
 
 

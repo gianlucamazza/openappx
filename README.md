@@ -163,6 +163,21 @@ openappx bundle --package app-x64.msix --package app-x86.msix --out app.msixbund
 openappx sign --package app.msixbundle --pfx cert.pfx
 ```
 
+A resource package — the language-pack shape — is an ordinary layout whose
+`Identity` carries a `ResourceId` and no `ProcessorArchitecture`, shares the
+application's `Name` and `Publisher`, and sets
+`<Properties><ResourcePackage>true`. `examples/resource-language` is a
+checked-in one; packed, it bundles beside `examples/minimal-layout`:
+
+```bash
+openappx pack --root examples/minimal-layout   --out app.msix
+openappx pack --root examples/resource-language --out lang-de.msix
+openappx bundle --package app.msix --package lang-de.msix --out app.msixbundle
+```
+
+Known limit: registering such a mixed bundle needs the two `resources.pri`
+files to merge, which is `makepri`'s side of the fence — see the roadmap.
+
 `inspect` is the read side of `pack`: it re-derives every block hash from the bytes
 stored in the archive and compares them with `AppxBlockMap.xml`, checks `LfhSize`
 against the ZIP local headers actually written, and verifies that `[Content_Types].xml`

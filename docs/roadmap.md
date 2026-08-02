@@ -113,7 +113,8 @@ Block _hashes_ were already correct: they cover uncompressed data.
 - [ ] A bundle mixing an application and a language pack registers only if both
       `resources.pri` files merge. Ours do not yet: `0x80070002` at registration.
       Building a PRI that expects to be merged is a `makepri` question, not a
-      packaging one.
+      packaging one. `examples/resource-language` is a checked-in resource
+      package for exercising the packaging half.
 
 ## Not done, and why
 
