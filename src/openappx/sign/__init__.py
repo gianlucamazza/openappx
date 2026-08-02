@@ -1,20 +1,21 @@
 """Appx signature support.
 
-What works today, with no dependencies:
+Reading works with no dependencies:
 
     parse_p7x_digests(p7x_bytes)  -> declared digests from AppxSignature.p7x
     compute_digests(package)      -> digests recomputed from the archive itself
     signature_problems(package)   -> mismatches between the two
 
-What is **not** implemented: creating a signature. That needs a CMS/PKCS#7
-SignedData structure wrapped around the digest blob, which means ASN.1 encoding
-and RSA/ECDSA signing — neither is in the standard library, and the upstream
-MSIX SDK cannot do it either (`makemsix` validates signatures, it does not
-create them). docs/signing.md records what a signer would have to produce.
+Creating a signature works too — `openappx sign` (signer.py) builds the
+CMS/PKCS#7 SignedData around the digest blob and attaches it — but it needs
+the optional `[sign]` extra for the RSA/ECDSA primitives. Every structure it
+emits was copied from a real Microsoft signature and confirmed by a console
+accepting the package; docs/signing.md records the evidence.
 
-Verification here is limited to digest coherence: it proves the package matches
-what its signature covers, not that the certificate is trusted, unexpired, or
-that Identity/@Publisher matches the certificate subject.
+Verification proves digest coherence, publisher agreement and validity dates
+(certificate.py). Chain of trust and revocation are deliberately not checked:
+both need a trust store and a policy about which roots count, which is the
+device's job, not ours.
 """
 
 from __future__ import annotations

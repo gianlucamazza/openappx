@@ -135,7 +135,7 @@ def test_signing_flags_are_refused_outright(tmp_path: Path, capsys):
         ]
     )
     assert code == 2
-    assert "signing is not implemented" in capsys.readouterr().err
+    assert "openappx sign" in capsys.readouterr().err
 
 
 def test_default_binary_location_is_searched(monkeypatch, tmp_path: Path):
