@@ -44,7 +44,7 @@ Block _hashes_ were already correct: they cover uncompressed data.
       only `-d`/`-p`, and upstream has no signature creator)
 - [x] **`openappx sign` creates signatures on Linux.** `cryptography` sits behind
       the optional `[sign]` extra for RSA and PKCS#12; the DER encoding is ours
-      (`sign/asn1.py`). An Xbox One dev kit installed a package packed and signed
+      (`sign/asn1.py`). An Xbox Series S dev kit installed a package packed and signed
       entirely by this project, and rejected the same package with one byte
       changed (`0x80096010 TRUST_E_BAD_DIGEST`).
 - [x] Check `Identity/@Publisher` against the certificate subject before signing,
@@ -80,19 +80,14 @@ Block _hashes_ were already correct: they cover uncompressed data.
 
 - [x] `openappx unpack` — extract a layout a packer can consume again. Verified
       by round-tripping a real 19 MB package to byte-identical output.
-- [x] **`0x8d160120` on launch is the console's, not ours — settled.**
-      `/api/taskmanager/app` returns it for every sideloaded package on this
-      device, including **Microsoft Edge**, which Microsoft signed and shipped.
-      Four packages with nothing in common but the hardware fail identically:
-      a shipped application built on Windows with MSBuild, that same application
-      repackaged here, a UWP app compiled from scratch on Linux, and Edge. Every one installs; none
-      launches. `/api/app/packagemanager/packages` also reports `AppListEntry: 0`
-      for all four and `1` for everything preinstalled, which is what sideloading
-      looks like on this console rather than a defect.
-
-      What this does *not* prove is that a repackaged app runs correctly once
-      started — only that failing to start it through Device Portal says nothing
-      about the packaging.
+- [x] **`0x8d160120` on launch was ours after all — settled the other way.**
+      An earlier entry here concluded the opposite: every sideloaded package,
+      Microsoft Edge included, failed identically, so the console was blamed.
+      The uniformity was the tell misread — this client built every AUMID with
+      a double underscore and omitted the `package` parameter, so every launch
+      request it (and the tests derived from it) made was invalid, whatever the
+      package. Fixed in 0.6.3; a package packed and signed here now launches
+      and runs on the same console via `deploy --start`.
 
 ### Size limits
 
@@ -128,9 +123,10 @@ Block _hashes_ were already correct: they cover uncompressed data.
 - **Streaming pack** — the archive is assembled in memory. The writer is the
   most carefully verified code here, so reworking it deserves a session where
   the result can be re-checked on hardware, not the end of one.
-- **Proving a repackaged app launches** — blocked externally, and now known to
-  be so: Device Portal cannot launch _any_ sideloaded package on this console,
-  Microsoft Edge included. It would take a device where that path works.
+- **Proving a repackaged app launches.** A package packed and signed here
+  launches and runs (0.6.3, Xbox Series S) — but that one was compiled from
+  scratch. The 47 MB _repackaged_ application has installed and never been
+  started since the launch path was fixed; starting it is the remaining step.
 
 ## Later (research, not committed)
 

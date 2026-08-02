@@ -219,7 +219,7 @@ openappx deploy --device https://<ip>:11443 --user NAME --package app.msix --ins
 ```
 
 `examples/resource-only/` is the layout this loop was verified with: it installs
-on an Xbox One dev kit. `examples/minimal-layout/` shows a desktop full-trust
+on an Xbox Series S dev kit. `examples/minimal-layout/` shows a desktop full-trust
 manifest instead, and deliberately ships a placeholder executable, so it packs
 and signs but stops at the deployment stage.
 
@@ -286,15 +286,15 @@ openappx/
 
 ## Known limits
 
-| Limit             | Detail                                                                                                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation. |
-| Memory            | `pack` builds the archive in memory: fine for tens of MB, not for GB.                                                                                                                                          |
-| Running an app    | Packages are proven to **install**. None has been seen to run: the test console refuses to launch every sideloaded package, Microsoft Edge included, so it cannot answer the question either way.              |
-| Timestamping      | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here.                                                                                                                 |
-| Bundles           | A bundle mixing an application and a language pack registers only if both `resources.pri` merge; ours do not yet (`0x80070002`).                                                                               |
-| CodeIntegrity     | `AppxMetadata/CodeIntegrity.cat` is verified when present, never generated. It matters only where Device Guard is enforced.                                                                                    |
-| Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust.                                                                                                          |
+| Limit             | Detail                                                                                                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation.                                                          |
+| Memory            | `pack` builds the archive in memory: fine for tens of MB, not for GB.                                                                                                                                                                                                   |
+| Running an app    | A package packed and signed here has been **launched and observed running** on an Xbox Series S via `deploy --start` (0.6.3 — earlier releases built the launch request wrong, which for a while read as a console that refused everything). One console, one OS build. |
+| Timestamping      | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here.                                                                                                                                                                          |
+| Bundles           | A bundle mixing an application and a language pack registers only if both `resources.pri` merge; ours do not yet (`0x80070002`).                                                                                                                                        |
+| CodeIntegrity     | `AppxMetadata/CodeIntegrity.cat` is verified when present, never generated. It matters only where Device Guard is enforced.                                                                                                                                             |
+| Certificate trust | `inspect` reports the signer and checks publisher agreement and expiry, but never the chain of trust.                                                                                                                                                                   |
 
 ## Roadmap
 

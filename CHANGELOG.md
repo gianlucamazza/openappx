@@ -172,7 +172,7 @@ First release published to PyPI: `pip install openappx`.
 
 The whole chain now works from Linux, with no Windows tooling: **pack → sign →
 deploy**. A real 47 MB UWP application, repackaged and signed by this project,
-installs on an Xbox One dev kit.
+installs on an Xbox Series S dev kit.
 
 ### Added
 

@@ -7,7 +7,7 @@ the next person does not have to repeat it.
 ## Status: signing works, and a console accepts it
 
 `openappx sign` produces `AppxSignature.p7x` on Linux with no Windows tooling.
-The proof is not that the code runs — it is that an Xbox One dev kit installed
+The proof is not that the code runs — it is that an Xbox Series S dev kit installed
 a package packed *and* signed entirely by this project, and rejected the same
 package with one byte altered:
 
@@ -87,7 +87,7 @@ is still only visible as an install failure.
 
 ## Sideloading requires a signature — measured, not assumed
 
-Uploading an unsigned openappx package to an Xbox One in Developer Mode
+Uploading an unsigned openappx package to an Xbox Series S in Developer Mode
 (`openappx deploy`) produces:
 
 ```json

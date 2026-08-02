@@ -1,7 +1,7 @@
 # The Appx/MSIX package format, as measured
 
 Everything here was established by dissecting Microsoft-signed packages and by
-watching an Xbox One dev kit accept or reject deliberately-broken ones. Where a
+watching an Xbox Series S dev kit accept or reject deliberately-broken ones. Where a
 rule contradicts what the format documentation seems to say, the measurement
 wins and the method is noted, because several of these look wrong until you see
 the error code.
