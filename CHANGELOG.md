@@ -25,6 +25,16 @@ Notable changes per release. Dates are the day the work landed.
 
 ### Added
 
+- **The CodeIntegrity catalogue format is dissected and pinned.** What
+  `AppxMetadata/CodeIntegrity.cat` is was research; it is now measured, off
+  Microsoft's own catalogue: a PKCS#7-signed certificate trust list whose
+  members are **PE Authenticode digests** (SHA-1 and SHA-256 per PE payload,
+  CheckSum and security directory excluded — reproduced exactly), with non-PE
+  payloads absent, the part deflated immediately before the signature, and its
+  content type declared by Override. `tests/test_catalog.py` holds every fact;
+  docs/signing.md records them. The writer deliberately stays unwritten: it
+  needs an Authenticode hasher for arbitrary PEs, and only enforced Device
+  Guard could confirm the result — the roadmap says so.
 - **`examples/resource-language`, a checked-in resource package.** The
   language-pack shape: `Identity/@ResourceId` and no `ProcessorArchitecture`,
   `<Properties><ResourcePackage>true`, and — deliberately — the same `Name`

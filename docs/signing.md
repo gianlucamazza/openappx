@@ -176,6 +176,54 @@ easy to get silently wrong, and both were confirmed against a real signature:
 - the RSA signature covers those attributes encoded as a `SET` (tag `0x31`), not
   with the `[0] IMPLICIT` tag they carry inside the `SignerInfo`.
 
+## CodeIntegrity catalogues
+
+What `AppxMetadata/CodeIntegrity.cat` actually is, read off Microsoft's own
+`SignedTamperedCodeIntegrity-TRUST_E_BAD_DIGEST.appx` (the
+`with_code_integrity` fixture) and pinned as assertions in
+`tests/test_catalog.py` — not derived from a specification:
+
+```
+CodeIntegrity.cat = PKCS#7 SignedData (DER, no PKCX prefix)
+└── content type 1.3.6.1.4.1.311.10.1        szOID_CTL — a certificate trust list
+    └── CertificateTrustList
+        ├── SubjectUsage   1.3.6.1.4.1.311.12.1.1   szOID_CATALOG_LIST
+        ├── 16-byte list identifier, then a UTCTIME
+        ├── SubjectAlgorithm 1.3.6.1.4.1.311.12.1.3 CATALOG_LIST_MEMBER_V2
+        ├── members: one SEQUENCE per digest, its tag *being* the digest
+        └── [0] CAT_NAMEVALUE ("OSAttr": a Windows version range, BMP string)
+```
+
+The facts a writer would have to reproduce, each one measured:
+
+- **Members are PE Authenticode digests, not file hashes.** Every PE payload
+  appears twice — once keyed by SHA-1, once by SHA-256 — of the image with the
+  4-byte `CheckSum` and the 8-byte security data directory entry excluded.
+  Non-PE payloads (text, png, the manifest, the blockmap) are not members at
+  all, and flat hashes of the parts match nothing. The 15-line
+  `authenticode_digest` in `tests/test_catalog.py` reproduces all four member
+  tags of the real catalogue exactly.
+- The SHA-256 members carry an `SPC_INDIRECT_DATA` attribute whose data is
+  `SPC_PE_IMAGE_DATA` (1.3.6.1.4.1.311.2.1.15) — the catalogue says out loud
+  that the digest is over a PE image. The SHA-1 members carry only an empty
+  `CAT_MEMBERINFO2`.
+- The part sits **after `[Content_Types].xml`, immediately before
+  `AppxSignature.p7x`**, and is **deflated** — unlike our generated parts,
+  which are always stored.
+- `[Content_Types].xml` declares it with an **Override**
+  (`application/vnd.ms-pkiseccat`); there is no `Default Extension="cat"`.
+- The signature covers it through `AXCI` (uncompressed), and it is
+  deliberately absent from the blockmap — both already verified by
+  `tests/test_signature.py`.
+
+Why openappx still does not generate one: the members require a correct
+Authenticode hasher for arbitrary PEs (embedded certificate tables, trailing
+data, both PE32 and PE32+), the CTL carries attributes (`OSAttr`, the
+member-info pair) whose semantics only enforcement could confirm, and no
+hardware here enforces Device Guard. A structurally plausible catalogue that
+enforcement rejects is exactly the failure mode this project refuses to ship;
+generation stays on the roadmap as research, now with the format mapped.
+
 ## Practical options today
 
 - **Windows**: `signtool sign /fd SHA256 /a /f cert.pfx /p <password> package.msix`
