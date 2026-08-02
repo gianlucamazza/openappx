@@ -7,6 +7,11 @@ import sys
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in ("-V", "--version"):
+        from openappx import __version__
+
+        print(f"openappx {__version__}")
+        return 0
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: openappx <pack|bundle|unpack|sign|validate|inspect|deploy> …")
         print("  openappx pack --root DIR --out FILE.msix")

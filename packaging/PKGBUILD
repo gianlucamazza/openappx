@@ -6,7 +6,7 @@
 # suite CI does.
 pkgname=python-openappx
 _name=openappx
-pkgver=0.6.2
+pkgver=0.6.3
 pkgrel=1
 pkgdesc="Build, sign, bundle and install Windows Appx/MSIX packages from Linux"
 arch=('any')

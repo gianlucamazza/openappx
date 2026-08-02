@@ -35,6 +35,15 @@ def test_help_succeeds(capsys):
         assert command in out, command
 
 
+def test_version_prints_the_packaged_number(capsys):
+    """Scripts gate on this (uwp-crossbuild's run-on-device.sh compares it
+    against the first release whose deploy could launch anything)."""
+    import openappx
+
+    assert cli_main(["--version"]) == 0
+    assert capsys.readouterr().out.strip() == f"openappx {openappx.__version__}"
+
+
 def test_unknown_command_is_rejected(capsys):
     assert cli_main(["frobnicate"]) == 2
     assert "unknown command" in capsys.readouterr().err

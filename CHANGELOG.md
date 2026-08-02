@@ -2,18 +2,23 @@
 
 Notable changes per release. Dates are the day the work landed.
 
-## Unreleased
+## 0.6.3 — 2026-08-02
 
 The first time `deploy --start` launched anything on a real console — because
 until now it never could. Found end to end against an Xbox Series S
 (OS 26100.8866), each with a device-verified test.
+
+### Added
+
+- **`openappx --version`** prints the packaged version. Tools that depend on
+  this release's deploy fixes (uwp-crossbuild's `run-on-device.sh`) gate on it.
 
 ### Fixed
 
 - **The package family name joined name and hash with a double underscore**
   (`Name__hash`), so every AUMID named nothing and every launch of every app —
   the console's own Dev Home included — failed as an opaque 0x8D160120. The
-  double underscore belongs to the *full* name, where it stands for an empty
+  double underscore belongs to the _full_ name, where it stands for an empty
   resource id; the device's own PackageRelativeId records read `Name_hash!App`.
 - **`--start` now sends the base64 `package` parameter beside `appid`.** The
   Xbox portal answers an appid-only request with the same 0x8D160120; desktop
