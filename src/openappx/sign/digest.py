@@ -79,11 +79,12 @@ def _read_entries(blob: bytes, offset: int) -> dict[str, bytes]:
     return digests
 
 
-def central_directory_offset(raw: bytes, infos: list[zipfile.ZipInfo]) -> int:
+def central_directory_offset(raw, infos: list[zipfile.ZipInfo]) -> int:
     """Offset where the central directory starts, i.e. the end of the last record.
 
     Derived from the last local record rather than the EOCD, which stores
-    0xFFFFFFFF placeholders in ZIP64 archives.
+    0xFFFFFFFF placeholders in ZIP64 archives. `raw` is the package opened in
+    binary mode; only the last local header is read from it.
     """
     if not infos:
         raise ValueError("archive has no entries")
@@ -93,8 +94,27 @@ def central_directory_offset(raw: bytes, infos: list[zipfile.ZipInfo]) -> int:
             f"{last.filename}: streamed entry (data descriptor); "
             "record length cannot be determined"
         )
-    header = read_local_header(raw, last.header_offset)
+    raw.seek(last.header_offset)
+    # 30 fixed bytes plus name and extra, each at most 0xFFFF: always enough.
+    header = read_local_header(raw.read(30 + 2 * 0xFFFF), 0)
     return last.header_offset + header.size + last.compress_size
+
+
+_HASH_CHUNK = 1 << 20
+
+
+def _hash_range(raw, start: int, end: int) -> bytes:
+    """SHA-256 of `raw[start:end]`, read in chunks rather than sliced."""
+    raw.seek(start)
+    digest = hashlib.sha256()
+    remaining = end - start
+    while remaining:
+        chunk = raw.read(min(_HASH_CHUNK, remaining))
+        if not chunk:
+            raise ValueError("archive truncated while hashing")
+        digest.update(chunk)
+        remaining -= len(chunk)
+    return digest.digest()
 
 
 def compute_digests(package: Path) -> dict[str, bytes]:
@@ -102,26 +122,28 @@ def compute_digests(package: Path) -> dict[str, bytes]:
 
     For an unsigned package this includes AXCD, and the result is exactly what a
     signer must cover. For a signed package AXCD is omitted (see module docstring).
+    AXPC and AXCD are hashed in chunks straight off the file — a package is never
+    read whole here; only the three small named parts go through `zf.read`.
     """
-    raw = Path(package).read_bytes()
     digests: dict[str, bytes] = {}
 
-    with zipfile.ZipFile(package) as zf:
+    with zipfile.ZipFile(package) as zf, open(package, "rb") as raw:
         infos = zf.infolist()
         names = {i.filename for i in infos}
         signature = next((i for i in infos if i.filename == SIGNATURE_PART), None)
 
         cd_offset = central_directory_offset(raw, infos)
         if signature is None:
-            digests["AXPC"] = hashlib.sha256(raw[:cd_offset]).digest()
-            digests["AXCD"] = hashlib.sha256(raw[cd_offset:]).digest()
+            total = raw.seek(0, 2)  # SEEK_END: the archive's size
+            digests["AXPC"] = _hash_range(raw, 0, cd_offset)
+            digests["AXCD"] = _hash_range(raw, cd_offset, total)
         else:
             # The signature must be the last record for AXPC to mean anything.
             if signature.header_offset != max(i.header_offset for i in infos):
                 raise ValueError(
                     f"{SIGNATURE_PART} is not the last part of the archive"
                 )
-            digests["AXPC"] = hashlib.sha256(raw[: signature.header_offset]).digest()
+            digests["AXPC"] = _hash_range(raw, 0, signature.header_offset)
 
         for part, key in (
             (CONTENT_TYPES_PART, "AXCT"),
