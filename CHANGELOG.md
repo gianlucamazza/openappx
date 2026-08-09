@@ -2,6 +2,36 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## 0.6.4 — 2026-08-09
+
+Docs-only release: the README caught up with what the tool already did.
+
+### Fixed
+
+- **The status blockquote said "Xbox One".** The console has been an Xbox
+  Series S since commit `629f905` renamed it everywhere else; the most-read
+  paragraph in the repo and the 0.4.0 bundle entry were the two survivors.
+- **The status blockquote led with an install from the 0.4.0 era.** The state
+  of the art — the 216-translation-unit application compiled by uwp-crossbuild
+  and packed, signed, installed and **observed running** here (2026-08-08) —
+  was buried in the Known-limits table. The blockquote now leads with it.
+- **The 0.6.0 "Established" entry carries a retraction notice.** It settled
+  `0x8d160120` as a console property; 0.6.3 proved the failure was ours. The
+  entry stands, flagged, with a pointer forward.
+- **Exit-code rule matches `pack`**, which exits `2` on layout problems
+  without `--allow-missing`.
+- **`bootstrap-makemsix.sh` claimed makemsix signs.** The last surviving copy
+  of a claim retracted in 0.4.0.
+
+### Added
+
+- `deploy --start` / `--stop` / `--app-id` / `--also-upload` / `--no-wait` and
+  `openappx --version` in the README's CLI reference — `--start` is the flag
+  the Known-limits launch claim rests on, and `--version` is what downstream
+  tools gate on.
+- `docs/best-practices.md` and `docs/audit-2026-08.md` in the project layout
+  tree, which listed four of the six docs.
+
 ## 0.6.3 — 2026-08-02
 
 The first time `deploy --start` launched anything on a real console — because
@@ -59,7 +89,7 @@ First release published to PyPI: `pip install openappx`.
 
 - **`openappx bundle`** — combine `.msix` packages into an `.msixbundle`, the
   last big gap in the tool. A bundle built and signed here installs on an Xbox
-  One dev kit. `inspect` reads bundles too, and reports Microsoft's own
+  Series S dev kit. `inspect` reads bundles too, and reports Microsoft's own
   deliberately-broken reference bundles exactly as upstream labels them.
 
   Five things differ from a package, and every one was found by a device
@@ -95,6 +125,12 @@ First release published to PyPI: `pip install openappx`.
   being searched for, so a comment mentioning `Executable=` was read as markup.
 
 ### Established
+
+> **Retracted in 0.6.3.** The conclusion below was wrong: the failure was ours
+> after all — this client built every AUMID with a double underscore, so every
+> launch request it sent was malformed, Edge's included. See the 0.6.3 entry
+> and [docs/roadmap.md](docs/roadmap.md). The entry stands as written because
+> the changelog is a record, not because it is right.
 
 - `0x8d160120` on app launch is a property of this console, not of any packer —
   and this is now settled rather than suspected. Device Portal refuses to launch

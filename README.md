@@ -8,11 +8,14 @@ and installs it on a real device over the Windows Device Portal. Pure Python,
 standard library only — signing is the one optional extra.
 
 > **Status: beta.** The whole chain works and is verified on hardware:
-> **pack → sign → deploy, from Linux, with no Windows tooling**. A real 47 MB
-> UWP application, repackaged and signed by this project, installs on an Xbox
-> One dev kit. Compiling PE/UWP binaries stays **out of scope** (see
-> [Non-goals](#non-goals)) — [uwp-crossbuild](https://github.com/gianlucamazza/uwp-crossbuild)
-> is the companion project that does that part.
+> **pack → sign → deploy → launch, from Linux, with no Windows tooling**. A
+> real 216-translation-unit UWP application — compiled by
+> [uwp-crossbuild](https://github.com/gianlucamazza/uwp-crossbuild), packed,
+> signed and installed by this project — has been **observed running** on an
+> Xbox Series S dev kit (2026-08-08); a real 47 MB UWP application, repackaged
+> and signed here, installs on the same console. Compiling PE/UWP binaries
+> stays **out of scope** (see [Non-goals](#non-goals)) — uwp-crossbuild is the
+> companion project that does that part.
 
 ```bash
 pip install openappx           # signing needs the extra: openappx[sign]
@@ -149,7 +152,9 @@ openappx validate --root DIR      # check a layout before packing
 openappx unpack --package FILE.msix --out DIR
 openappx inspect --package FILE.msix [--json]
 openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
+openappx deploy --device URL --user NAME --start PACKAGE_FULL_NAME --app-id ID
 openappx bundle --package A.msix --package B.msix --out X.msixbundle  # repeat --package
+openappx --version
 ```
 
 A bundle carries one application across architectures, plus any resource
@@ -206,6 +211,10 @@ openappx deploy --device https://192.168.1.50:11443 --user devuser \
   never be used in the web UI.
 - `--list` shows installed packages, `--uninstall PACKAGE_FULL_NAME` removes one,
   `--install-cert CERT.cer` trusts a certificate on the device.
+- `--start PACKAGE_FULL_NAME --app-id ID` launches an installed app (the id is
+  `Application/@Id` from the manifest); `--stop PACKAGE_FULL_NAME` ends it.
+  `--also-upload` sends dependency packages or a `.cer` alongside an install;
+  `--no-wait` skips polling for the result.
 
 **Sideloading requires a signed package** and a certificate the device trusts.
 The full loop, entirely from Linux:
@@ -230,9 +239,10 @@ signed package; digest and archive checks remain available without it.
 responses that verify each step.
 
 Exit codes: `0` success, `1` a valid command failed at runtime or found invalid
-content, `2` bad usage or a missing/unreadable input path. For example,
-`validate` returns `1` for layout problems, while `unpack` returns `1` for a
-corrupt archive and `2` when the package path does not exist.
+content, `2` bad usage, a missing/unreadable input path, or a layout that fails
+validation (`pack` without `--allow-missing`). For example, `validate` returns
+`1` for layout problems, while `unpack` returns `1` for a corrupt archive and
+`2` when the package path does not exist.
 
 Without an editable install, replace `openappx pack` with
 `PYTHONPATH=src python3 -m openappx.pack` (same for `validate` and `inspect`).
@@ -260,6 +270,8 @@ and is the one covered by the test suite.
 ```
 openappx/
 ├── src/openappx/
+│   ├── __init__.py    # the version, and nothing else
+│   ├── __main__.py    # `python -m openappx`
 │   ├── cli.py         # the `openappx` entry point; dispatches lazily
 │   ├── blockmap.py    # block hashing, XML rendering, ZIP header parsing
 │   ├── pack_core.py   # the ZIP writer and the two pack backends
@@ -274,6 +286,8 @@ openappx/
 │   ├── architecture.md   # the layers and where to extend them
 │   ├── format.md         # container and blockmap rules, with their evidence
 │   ├── signing.md        # what AppxSignature.p7x contains, decoded
+│   ├── best-practices.md # doc and release hygiene rules this repo holds itself to
+│   ├── audit-2026-08.md  # the 2026-08 repo audit and its verification evidence
 │   └── roadmap.md        # done, not done, and why
 ├── examples/
 │   ├── minimal-layout/   # desktop, full-trust; placeholder exe, so it never installs

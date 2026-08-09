@@ -1,7 +1,7 @@
 name: aur
 
-# Publishes python-openappx to the AUR when a v* tag is pushed, by running the
-# same script
+# Publishes python-openappx to the AUR when the release workflow finishes (the
+# trigger note below says why not the tag), by running the same script
 # a maintainer runs by hand — packaging/publish-aur.sh. Nothing here is
 # workflow-only, so a release never depends on CI being available.
 #
