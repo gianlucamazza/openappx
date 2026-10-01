@@ -151,7 +151,7 @@ openappx sign --make-test-cert "CN=Publisher" --cert-out mycert
 openappx validate --root DIR      # check a layout before packing
 openappx unpack --package FILE.msix --out DIR
 openappx inspect --package FILE.msix [--json]
-openappx deploy --device URL --user NAME --package FILE.msix [--insecure]
+openappx deploy --device URL --user NAME --package FILE.msix [--pin-sha256 HEX]
 openappx deploy --device URL --user NAME --start PACKAGE_FULL_NAME --app-id ID
 openappx bundle --package A.msix --package B.msix --out X.msixbundle  # repeat --package
 openappx --version
@@ -199,12 +199,16 @@ device tells you whether a package is actually installable:
 ```bash
 export OPENAPPX_DEVICE_PASSWORD='…'        # keeps it out of `ps`
 openappx deploy --device https://192.168.1.50:11443 --user devuser \
-  --package example.msix --insecure
+  --package example.msix --pin-sha256 <device certificate SHA-256>
 ```
 
 - The device must be in **Developer Mode** with Device Portal enabled
   (on Xbox: Dev Home → Home → Remote Access → Remote Access Settings).
-- `--insecure` is required because devices serve a self-signed certificate.
+- Devices serve a self-signed certificate, so pin it: `--pin-sha256` (or
+  `OPENAPPX_DEVICE_PIN`) trusts only the certificate with that SHA-256, checked on
+  every connection before credentials are sent. Read it once on a trusted network:
+  `openssl s_client -connect <ip>:11443 </dev/null 2>/dev/null | openssl x509 -outform DER | sha256sum`.
+  `--insecure` accepts any certificate and checks nothing.
 - CSRF is handled by the cookie-to-header handshake the Device Portal UI uses
   (`CSRF-Token` cookie → `X-CSRF-Token` header). `--csrf-bypass` switches to
   Microsoft's `auto-<username>` escape hatch instead; that account must then
@@ -221,10 +225,10 @@ The full loop, entirely from Linux:
 
 ```bash
 openappx sign --make-test-cert "CN=OpenAppx-Example" --cert-out mycert
-openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer --insecure
+openappx deploy --device https://<ip>:11443 --user NAME --install-cert mycert.cer --pin-sha256 HEX
 openappx pack --root examples/resource-only --out app.msix
 openappx sign --package app.msix --pfx mycert.pfx --timestamp
-openappx deploy --device https://<ip>:11443 --user NAME --package app.msix --insecure
+openappx deploy --device https://<ip>:11443 --user NAME --package app.msix --pin-sha256 HEX
 ```
 
 `examples/resource-only/` is the layout this loop was verified with: it installs

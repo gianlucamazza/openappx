@@ -46,8 +46,9 @@ change.
 
 - Keep PFX passwords and Device Portal passwords in environment variables or
   interactive prompts, never in shell history or process arguments.
-- Use `--insecure` only on a trusted network when the Device Portal certificate
-  is self-signed; never silently disable TLS verification in code.
+- Pin the device's self-signed Device Portal certificate with `--pin-sha256`;
+  `--insecure` (no check at all) is for a trusted network only. Never silently
+  disable TLS verification in code.
 - Do not commit private key material. Public `.cer` files are safe only for the
   trust workflow they are intended to support.
 - Keep archive extraction path-safe and reject ambiguous duplicate members.

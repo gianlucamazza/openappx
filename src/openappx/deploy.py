@@ -17,8 +17,9 @@ Two WDP quirks drive the design:
   bypasses CSRF for CLI clients; it is available via `bypass_csrf=True`, but that
   account must then never be used in the web UI, or the console is open to CSRF.
 - **TLS**: devices serve a self-signed certificate, so verification fails by
-  default. `--insecure` is required to accept it, explicitly rather than
-  silently.
+  default. `--pin-sha256` trusts exactly that certificate: the SHA-256 of the DER
+  certificate is checked on every connection before credentials are sent.
+  `--insecure` accepts any certificate, explicitly rather than silently.
 
 Installing a package is a change to someone's device: this module never picks a
 target on its own, and never uninstalls as a side effect of installing.
@@ -28,7 +29,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import functools
 import getpass
+import hashlib
+import http.client
 import json
 import os
 import re
@@ -57,6 +61,7 @@ CSRF_COOKIE = "CSRF-Token"
 CSRF_HEADER = "X-CSRF-Token"
 
 PASSWORD_ENV = "OPENAPPX_DEVICE_PASSWORD"
+PIN_ENV = "OPENAPPX_DEVICE_PIN"
 DEFAULT_TIMEOUT = 300
 
 
@@ -102,6 +107,46 @@ class InstallState:
         return self.code != 0
 
 
+def normalise_fingerprint(value: str) -> str:
+    """SHA-256 of a DER certificate as 64 lowercase hex (colons and case ignored)."""
+    digest = value.replace(":", "").strip().lower()
+    if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError(
+            "a certificate pin is the SHA-256 of the DER certificate (64 hex digits)"
+        )
+    return digest
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that accepts only the certificate whose SHA-256 is `pin`."""
+
+    def __init__(self, *args, pin: str, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.pin = pin
+
+    def connect(self) -> None:
+        super().connect()
+        der = self.sock.getpeercert(binary_form=True) or b""
+        if hashlib.sha256(der).hexdigest() != self.pin:
+            self.close()
+            raise ssl.SSLCertVerificationError(
+                "device certificate does not match --pin-sha256"
+            )
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, context: ssl.SSLContext, pin: str) -> None:
+        super().__init__(context=context)
+        self.pin = pin
+
+    def https_open(self, req):
+        return self.do_open(
+            functools.partial(_PinnedHTTPSConnection, pin=self.pin),
+            req,
+            context=self._context,
+        )
+
+
 class DevicePortal:
     def __init__(
         self,
@@ -110,9 +155,12 @@ class DevicePortal:
         password: str,
         *,
         insecure: bool = False,
+        pin_sha256: str | None = None,
         bypass_csrf: bool = False,
         timeout: int = 30,
     ) -> None:
+        if insecure and pin_sha256:
+            raise ValueError("--insecure and --pin-sha256 are mutually exclusive")
         self.base_url = self._normalise(base_url)
         # `auto-` is Microsoft's documented CSRF escape hatch; off by default
         # because the cookie-to-header scheme below is what a real Xbox accepts.
@@ -123,8 +171,23 @@ class DevicePortal:
         )
         self.password = password
         self.timeout = timeout
+        # A pin replaces CA validation with an exact certificate match, checked by
+        # the connection itself; --insecure checks nothing.
         self.context = self._tls_context() if insecure else None
+        self._opener: urllib.request.OpenerDirector | None = None
+        if pin_sha256:
+            self.context = self._tls_context()
+            self._opener = urllib.request.build_opener(
+                _PinnedHTTPSHandler(self.context, normalise_fingerprint(pin_sha256))
+            )
         self._csrf_token: str | None = None
+
+    def _urlopen(self, request: urllib.request.Request):
+        if self._opener is not None:
+            return self._opener.open(request, timeout=self.timeout)
+        return urllib.request.urlopen(
+            request, timeout=self.timeout, context=self.context
+        )
 
     @staticmethod
     def _tls_context() -> ssl.SSLContext:
@@ -159,9 +222,7 @@ class DevicePortal:
         request = urllib.request.Request(self.base_url + "/")
         request.add_header("Authorization", self._auth_header())
         try:
-            with urllib.request.urlopen(
-                request, timeout=self.timeout, context=self.context
-            ) as response:
+            with self._urlopen(request) as response:
                 cookies = response.headers.get_all("Set-Cookie") or []
         except (urllib.error.HTTPError, urllib.error.URLError):
             return None  # let the actual request report the real failure
@@ -184,9 +245,7 @@ class DevicePortal:
                 request.add_header(CSRF_HEADER, token)
                 request.add_header("Cookie", f"{CSRF_COOKIE}={token}")
         try:
-            with urllib.request.urlopen(
-                request, timeout=self.timeout, context=self.context
-            ) as response:
+            with self._urlopen(request) as response:
                 return response.status, response.read()
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace").strip()
@@ -207,9 +266,10 @@ class DevicePortal:
         except urllib.error.URLError as e:
             reason = e.reason
             if isinstance(reason, ssl.SSLCertVerificationError):
+                detail = getattr(reason, "verify_message", None) or reason
                 raise DeviceError(
-                    "TLS verification failed — devices use a self-signed "
-                    "certificate; pass --insecure to accept it"
+                    f"TLS verification failed: {detail} — devices use a "
+                    "self-signed certificate; pin it with --pin-sha256"
                 ) from e
             raise DeviceError(f"cannot reach {self.base_url}: {reason}") from e
 
@@ -391,8 +451,15 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"prefer the {PASSWORD_ENV} environment variable",
     )
-    ap.add_argument(
-        "--insecure", action="store_true", help="accept the self-signed cert"
+    trust = ap.add_mutually_exclusive_group()
+    trust.add_argument(
+        "--pin-sha256",
+        metavar="HEX",
+        default=os.environ.get(PIN_ENV),
+        help=f"trust only the device certificate with this SHA-256 (or {PIN_ENV})",
+    )
+    trust.add_argument(
+        "--insecure", action="store_true", help="accept any certificate (no check)"
     )
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
 
@@ -439,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             args.user,
             resolve_password(args.password),
             insecure=args.insecure,
+            pin_sha256=None if args.insecure else args.pin_sha256,
             bypass_csrf=args.csrf_bypass,
             timeout=max(30, args.timeout),
         )

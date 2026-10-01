@@ -2,6 +2,17 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## 0.7.0 — 2026-10-01
+
+### Added
+
+- **`deploy --pin-sha256` (or `OPENAPPX_DEVICE_PIN`).** Trusts exactly the device's
+  self-signed Device Portal certificate: the SHA-256 of the DER certificate is
+  compared on every connection, before any credential is sent. It replaces
+  `--insecure` as the documented way to reach a device; the two are mutually
+  exclusive. Tests run the client against a local HTTPS stub with a certificate
+  generated per run.
+
 ## 0.6.4 — 2026-08-09
 
 Docs-only release: the README caught up with what the tool already did.
