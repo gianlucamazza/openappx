@@ -147,6 +147,21 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
         )
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Every request carries Basic credentials, which a redirect would forward
+    (possibly over plain HTTP); a redirect is reported as an error instead."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _pin_argument(value: str) -> str:
+    try:
+        return normalise_fingerprint(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from e
+
+
 class DevicePortal:
     def __init__(
         self,
@@ -162,6 +177,8 @@ class DevicePortal:
         if insecure and pin_sha256:
             raise ValueError("--insecure and --pin-sha256 are mutually exclusive")
         self.base_url = self._normalise(base_url)
+        if pin_sha256 and not self.base_url.startswith("https://"):
+            raise ValueError("--pin-sha256 needs an https:// device URL")
         # `auto-` is Microsoft's documented CSRF escape hatch; off by default
         # because the cookie-to-header scheme below is what a real Xbox accepts.
         self.username = (
@@ -174,20 +191,15 @@ class DevicePortal:
         # A pin replaces CA validation with an exact certificate match, checked by
         # the connection itself; --insecure checks nothing.
         self.context = self._tls_context() if insecure else None
-        self._opener: urllib.request.OpenerDirector | None = None
+        https = urllib.request.HTTPSHandler(context=self.context)
         if pin_sha256:
             self.context = self._tls_context()
-            self._opener = urllib.request.build_opener(
-                _PinnedHTTPSHandler(self.context, normalise_fingerprint(pin_sha256))
-            )
+            https = _PinnedHTTPSHandler(self.context, normalise_fingerprint(pin_sha256))
+        self._opener = urllib.request.build_opener(_NoRedirect(), https)
         self._csrf_token: str | None = None
 
     def _urlopen(self, request: urllib.request.Request):
-        if self._opener is not None:
-            return self._opener.open(request, timeout=self.timeout)
-        return urllib.request.urlopen(
-            request, timeout=self.timeout, context=self.context
-        )
+        return self._opener.open(request, timeout=self.timeout)
 
     @staticmethod
     def _tls_context() -> ssl.SSLContext:
@@ -251,6 +263,12 @@ class DevicePortal:
             body = e.read().decode("utf-8", errors="replace").strip()
             if e.code in allow:
                 return e.code, body.encode()
+            if 300 <= e.code < 400:
+                raise DeviceError(
+                    f"device redirected ({e.code}) to {e.headers.get('Location')}; "
+                    "redirects are not followed because they would forward the "
+                    "credentials — pass the final URL as --device"
+                ) from e
             if e.code == 401:
                 raise DeviceError(
                     "authentication rejected (401) — check the Device Portal "
@@ -455,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     trust.add_argument(
         "--pin-sha256",
         metavar="HEX",
+        type=_pin_argument,
         default=os.environ.get(PIN_ENV),
         help=f"trust only the device certificate with this SHA-256 (or {PIN_ENV})",
     )
@@ -499,6 +518,8 @@ def main(argv: list[str] | None = None) -> int:
         help="send the username as `auto-<name>` instead of the cookie handshake",
     )
     args = ap.parse_args(argv)
+    if args.pin_sha256 and not args.insecure and args.device.startswith("http://"):
+        ap.error("--pin-sha256 needs an https:// device URL")
 
     try:
         portal = DevicePortal(

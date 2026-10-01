@@ -49,6 +49,15 @@ class StubHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/followed":
+            RECEIVED["followed"] = self.headers.get("Authorization", "")
+            return self._send(200, {"InstalledPackages": []})
+        if RECEIVED.get("scenario") == "redirect":
+            self.send_response(302)
+            self.send_header("Location", "/followed")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if not self._auth_ok():
             return self._send(401, {"Reason": "nope"})
         if self.path == "/":
@@ -521,4 +530,35 @@ def test_cli_rejects_pin_with_insecure(monkeypatch):
             ["--device", "https://x", "--user", "a", "--list"]
             + ["--insecure", "--pin-sha256", "ab" * 32]
         )
+    assert exit_.value.code == 2
+
+
+def test_redirect_is_not_followed_with_credentials(portal: DevicePortal):
+    RECEIVED["scenario"] = "redirect"
+    with pytest.raises(DeviceError, match="redirected"):
+        portal.packages()
+    assert "followed" not in RECEIVED
+
+
+def test_pin_requires_https(stub: str):
+    with pytest.raises(ValueError, match="https://"):
+        DevicePortal(stub, "admin", "hunter2", pin_sha256="ab" * 32)
+    assert "password" not in RECEIVED
+
+
+@pytest.mark.parametrize(
+    ("args", "env"),
+    [
+        (["--device", "https://x", "--pin-sha256", "abc"], None),
+        (["--device", "https://x"], "abc"),
+        (["--device", "http://x", "--pin-sha256", "ab" * 32], None),
+    ],
+    ids=["bad-flag", "bad-environment", "plain-http"],
+)
+def test_cli_rejects_unusable_pin(args, env, monkeypatch):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "x")
+    if env is not None:
+        monkeypatch.setenv("OPENAPPX_DEVICE_PIN", env)
+    with pytest.raises(SystemExit) as exit_:
+        main(args + ["--user", "a", "--list"])
     assert exit_.value.code == 2

@@ -13,6 +13,15 @@ Notable changes per release. Dates are the day the work landed.
   exclusive. Tests run the client against a local HTTPS stub with a certificate
   generated per run.
 
+### Security
+
+- **Credentials never follow a redirect.** Every Device Portal request carries
+  Basic credentials, and urllib's default redirect handling would forward them to
+  the new location, possibly over plain HTTP. A 3xx is now reported as an error
+  that names the target.
+- **A pin needs an `https://` device URL**, and a malformed pin (flag or
+  environment) is a usage error (exit 2) instead of a traceback.
+
 ## 0.6.4 — 2026-08-09
 
 Docs-only release: the README caught up with what the tool already did.
