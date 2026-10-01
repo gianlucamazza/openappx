@@ -17,7 +17,7 @@ pytest tests/test_pack.py::test_pack_example -q   # single test
 PYTHONPATH=src python3 -m openappx.validate --root examples/minimal-layout
 PYTHONPATH=src python3 -m openappx.inspect --package /tmp/x.msix   # --json for machine output
 OPENAPPX_DEVICE_PASSWORD=… PYTHONPATH=src python3 -m openappx.deploy \
-  --device https://<ip>:11443 --user <name> --package /tmp/x.msix --insecure
+  --device https://<ip>:11443 --user <name> --package /tmp/x.msix --pin-sha256 <hex>
 pip install -e ".[dev]"                     # then the `openappx` console script works
 ./scripts/bootstrap-makemsix.sh             # optional native backend; often fails on new toolchains
 ```

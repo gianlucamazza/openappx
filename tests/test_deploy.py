@@ -49,6 +49,15 @@ class StubHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/followed":
+            RECEIVED["followed"] = self.headers.get("Authorization", "")
+            return self._send(200, {"InstalledPackages": []})
+        if RECEIVED.get("scenario") == "redirect":
+            self.send_response(302)
+            self.send_header("Location", "/followed")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if not self._auth_ok():
             return self._send(401, {"Reason": "nope"})
         if self.path == "/":
@@ -427,3 +436,129 @@ def test_wait_reports_each_change_of_phase(portal: DevicePortal):
         timeout=1, poll=0.05, on_progress=lambda s: seen.append(s.phase)
     )
     assert seen == ["installing"]  # reported once, not once per poll
+
+
+@pytest.fixture(scope="module")
+def tls_identity(tmp_path_factory) -> tuple[Path, Path, str]:
+    """A throwaway self-signed certificate, generated per run (no key in the repo)."""
+    import hashlib
+    import shutil
+    import ssl
+    import subprocess
+
+    if shutil.which("openssl") is None:
+        pytest.fail("the TLS pinning tests need the openssl command")
+    directory = tmp_path_factory.mktemp("tls")
+    cert, key = directory / "device.pem", directory / "device.key"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt"]
+        + ["ec_paramgen_curve:P-256", "-nodes", "-days", "1"]
+        + ["-subj", "/CN=openappx-test-device", "-keyout", str(key), "-out", str(cert)],
+        check=True,
+        capture_output=True,
+    )
+    der = ssl.PEM_cert_to_DER_cert(cert.read_text())
+    return cert, key, hashlib.sha256(der).hexdigest()
+
+
+@pytest.fixture
+def tls_stub(tls_identity):
+    """The stub behind HTTPS with the throwaway certificate."""
+    import ssl
+
+    cert, key, _ = tls_identity
+    RECEIVED.clear()
+    server = HTTPServer(("127.0.0.1", 0), StubHandler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"https://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def tls_pin(tls_identity) -> str:
+    return tls_identity[2]
+
+
+def test_pinned_certificate_is_trusted(tls_stub: str, tls_pin: str):
+    portal = DevicePortal(tls_stub, "admin", "hunter2", pin_sha256=tls_pin, timeout=10)
+    assert isinstance(portal.packages(), list)
+    assert RECEIVED["password"] == "hunter2"
+
+
+def test_pin_accepts_colons_and_upper_case(tls_stub: str, tls_pin: str):
+    pin = ":".join(tls_pin[i : i + 2] for i in range(0, 64, 2)).upper()
+    portal = DevicePortal(tls_stub, "admin", "hunter2", pin_sha256=pin, timeout=10)
+    assert isinstance(portal.packages(), list)
+
+
+def test_wrong_pin_fails_before_credentials_are_sent(tls_stub: str):
+    pin = "ab" * 32
+    portal = DevicePortal(tls_stub, "admin", "hunter2", pin_sha256=pin, timeout=10)
+    with pytest.raises(DeviceError, match="pin-sha256"):
+        portal.packages()
+    assert "password" not in RECEIVED
+
+
+def test_unpinned_https_is_refused_with_advice(tls_stub: str):
+    portal = DevicePortal(tls_stub, "admin", "hunter2", timeout=10)
+    with pytest.raises(DeviceError, match="--pin-sha256"):
+        portal.packages()
+
+
+def test_pin_and_insecure_are_exclusive():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        DevicePortal("https://x", "a", "b", insecure=True, pin_sha256="ab" * 32)
+    with pytest.raises(ValueError, match="64 hex digits"):
+        DevicePortal("https://x", "a", "b", pin_sha256="abc")
+
+
+def test_cli_pin_from_environment(tls_stub: str, tls_pin: str, monkeypatch):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "hunter2")
+    monkeypatch.setenv("OPENAPPX_DEVICE_PIN", tls_pin)
+    assert main(["--device", tls_stub, "--user", "admin", "--list"]) == 0
+
+
+def test_cli_rejects_pin_with_insecure(monkeypatch):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "x")
+    with pytest.raises(SystemExit) as exit_:
+        main(
+            ["--device", "https://x", "--user", "a", "--list"]
+            + ["--insecure", "--pin-sha256", "ab" * 32]
+        )
+    assert exit_.value.code == 2
+
+
+def test_redirect_is_not_followed_with_credentials(portal: DevicePortal):
+    RECEIVED["scenario"] = "redirect"
+    with pytest.raises(DeviceError, match="redirected"):
+        portal.packages()
+    assert "followed" not in RECEIVED
+
+
+def test_pin_requires_https(stub: str):
+    with pytest.raises(ValueError, match="https://"):
+        DevicePortal(stub, "admin", "hunter2", pin_sha256="ab" * 32)
+    assert "password" not in RECEIVED
+
+
+@pytest.mark.parametrize(
+    ("args", "env"),
+    [
+        (["--device", "https://x", "--pin-sha256", "abc"], None),
+        (["--device", "https://x"], "abc"),
+        (["--device", "http://x", "--pin-sha256", "ab" * 32], None),
+    ],
+    ids=["bad-flag", "bad-environment", "plain-http"],
+)
+def test_cli_rejects_unusable_pin(args, env, monkeypatch):
+    monkeypatch.setenv("OPENAPPX_DEVICE_PASSWORD", "x")
+    if env is not None:
+        monkeypatch.setenv("OPENAPPX_DEVICE_PIN", env)
+    with pytest.raises(SystemExit) as exit_:
+        main(args + ["--user", "a", "--list"])
+    assert exit_.value.code == 2
