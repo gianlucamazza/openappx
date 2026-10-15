@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import zipfile
 from pathlib import Path
+from typing import BinaryIO
 
 from openappx.blockmap import read_local_header
 
@@ -79,7 +80,7 @@ def _read_entries(blob: bytes, offset: int) -> dict[str, bytes]:
     return digests
 
 
-def central_directory_offset(raw, infos: list[zipfile.ZipInfo]) -> int:
+def central_directory_offset(raw: BinaryIO, infos: list[zipfile.ZipInfo]) -> int:
     """Offset where the central directory starts, i.e. the end of the last record.
 
     Derived from the last local record rather than the EOCD, which stores
@@ -103,7 +104,7 @@ def central_directory_offset(raw, infos: list[zipfile.ZipInfo]) -> int:
 _HASH_CHUNK = 1 << 20
 
 
-def _hash_range(raw, start: int, end: int) -> bytes:
+def _hash_range(raw: BinaryIO, start: int, end: int) -> bytes:
     """SHA-256 of `raw[start:end]`, read in chunks rather than sliced."""
     raw.seek(start)
     digest = hashlib.sha256()

@@ -214,21 +214,26 @@ def prepare_file_streamed(
     size = 0
     stream_size = 0
     fd, spill_name = tempfile.mkstemp(dir=spill_dir, suffix=".deflate")
-    with os.fdopen(fd, "wb") as spill, open(path, "rb") as source:
-        while True:
-            chunk = source.read(BLOCK_SIZE)
-            if not chunk:
-                break
-            size += len(chunk)
-            crc = zlib.crc32(chunk, crc)
-            hashes.append(hashlib.sha256(chunk).digest())
-            block = compressor.compress(chunk) + compressor.flush(zlib.Z_FULL_FLUSH)
-            compressed_sizes.append(len(block))
-            stream_size += len(block)
-            spill.write(block)
-        tail = compressor.flush()
-        stream_size += len(tail)
-        spill.write(tail)
+    try:
+        with os.fdopen(fd, "wb") as spill, open(path, "rb") as source:
+            while True:
+                chunk = source.read(BLOCK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                crc = zlib.crc32(chunk, crc)
+                hashes.append(hashlib.sha256(chunk).digest())
+                block = compressor.compress(chunk) + compressor.flush(zlib.Z_FULL_FLUSH)
+                compressed_sizes.append(len(block))
+                stream_size += len(block)
+                spill.write(block)
+            tail = compressor.flush()
+            stream_size += len(tail)
+            spill.write(tail)
+    except BaseException:
+        # A caller outside pack_python has no TemporaryDirectory to sweep it.
+        os.unlink(spill_name)
+        raise
 
     # prepare_file's decision, taken on sizes: deflate only when it pays off.
     deflated = size > 0 and stream_size < size

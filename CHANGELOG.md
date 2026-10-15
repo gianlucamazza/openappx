@@ -10,7 +10,7 @@ Notable changes per release. Dates are the day the work landed.
   hashing, CRC and per-block deflate built as it goes, the compressed stream
   spilled to a temporary directory beside the output — and a second pass
   copies spill or source into the archive. Peak memory is a few blocks
-  whatever the layout weighs: ~19 MB where the in-memory writer took ~420 MB
+  whatever the file sizes: ~19 MB where the in-memory writer took ~420 MB
   on a 200 MB layout, and slightly faster. The output is **byte-identical**:
   the in-memory primitives stay in the tree as the reference implementation
   (`bundle.py` still writes through them) and `tests/test_streaming.py` holds
@@ -21,7 +21,15 @@ Notable changes per release. Dates are the day the work landed.
 - **Digest verification no longer reads the package whole.** `compute_digests`
   hashes AXPC/AXCD in chunks straight off the file and reads only the three
   small named parts through `zipfile`; the golden tests against Microsoft's
-  own signed packages pass unchanged.
+  own signed packages pass unchanged. `sign.digest.central_directory_offset`
+  now takes the package opened in binary mode instead of its bytes.
+- **A package past 4 GiB is refused**, as a single file past 4 GiB already
+  was. Streaming made such layouts reachable; their records would need ZIP64
+  fields in the central directory, which no device has been seen to accept.
+- **A source file that changes while `pack` runs fails the pack.** Pass 2
+  copies exactly the bytes pass 1 measured and re-checks the CRC of stored
+  parts, so a file still being written cannot shift the archive's offsets;
+  the temporary is discarded and nothing is published.
 
 ### Added
 

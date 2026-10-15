@@ -218,3 +218,14 @@ def test_axci_digest_is_recomputed(with_code_integrity: Path):
     with zipfile.ZipFile(with_code_integrity) as zf:
         expected = hashlib.sha256(zf.read("AppxMetadata/CodeIntegrity.cat")).digest()
     assert digests["AXCI"] == expected
+
+
+def test_chunked_hashing_crosses_chunk_boundaries(tmp_path: Path, monkeypatch):
+    """AXPC and AXCD are hashed straight off the file in chunks; a chunk far
+    smaller than any record must give the digests a whole-file read gives."""
+    from openappx.sign import digest
+
+    pkg = pack_python(EXAMPLE, tmp_path / "x.msix")
+    whole = compute_digests(pkg)
+    monkeypatch.setattr(digest, "_HASH_CHUNK", 7)
+    assert compute_digests(pkg) == whole

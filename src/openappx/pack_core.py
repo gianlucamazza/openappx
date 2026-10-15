@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shutil
 import struct
 import subprocess
 import tempfile
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from openappx.blockmap import (
     BLOCK_SIZE,
+    StreamedFile,
     collect_files,
     content_types_xml,
     package_path,
@@ -280,6 +281,34 @@ def _write_central_directory(out: bytearray, entries: list[_Entry]) -> None:
     out += _central_directory_bytes(entries, len(out))
 
 
+def _copy_payload(part: StreamedFile, stream: BinaryIO) -> None:
+    """Copy exactly the bytes pass 1 measured, or fail.
+
+    Sizes, CRC and blockmap hashes were fixed when the file was read the first
+    time. A stored part is re-read from its source, so a file that changed in
+    between would shift every later offset; the copy is held to the measured
+    size and, for stored parts, the measured CRC.
+    """
+    remaining = part.payload_size
+    crc = 0
+    with open(part.payload_path, "rb") as payload:
+        while remaining:
+            chunk = payload.read(min(BLOCK_SIZE, remaining))
+            if not chunk:
+                break
+            stream.write(chunk)
+            crc = zlib.crc32(chunk, crc)
+            remaining -= len(chunk)
+        changed = remaining != 0 or payload.read(1) != b""
+    if not part.deflated and (crc & 0xFFFFFFFF) != part.crc:
+        changed = True
+    if changed:
+        raise RuntimeError(
+            f"{part.blocks.name}: {part.source} changed while it was being "
+            "packed; nothing was written."
+        )
+
+
 def pack_python(root: Path, out_msix: Path) -> Path:
     root = root.resolve()
     out_msix = out_msix.resolve()
@@ -312,9 +341,7 @@ def pack_python(root: Path, out_msix: Path) -> Path:
         prefix=f".{out_msix.name}.spill.", dir=out_msix.parent
     ) as spill_dir:
         streamed = [
-            prepare_file_streamed(
-                package_path(p.relative_to(root)), p, Path(spill_dir)
-            )
+            prepare_file_streamed(package_path(p.relative_to(root)), p, Path(spill_dir))
             for p in files
         ]
         entries = [s.blocks for s in streamed]
@@ -331,6 +358,28 @@ def pack_python(root: Path, out_msix: Path) -> Path:
         blockmap = render_blockmap_xml(entries, lfh_sizes)
         content_types = content_types_xml([e.name for e in entries])
 
+        # Streaming makes layouts above 4 GiB reachable. An offset past the
+        # 32-bit range needs a ZIP64 extra in the central directory, and Appx
+        # refuses ZIP64 extras on local records (see zip64_local_extra); the
+        # central case is unmeasured on a device, so it fails here like a
+        # single oversized file does.
+        archive_end = sum(
+            lfh_sizes[s.blocks.name] + s.payload_size for s in streamed
+        ) + sum(
+            zip_local_header_size(_zip_name(name).encode("utf-8"), b"") + len(data)
+            for name, data in (
+                ("[Content_Types].xml", content_types),
+                ("AppxBlockMap.xml", blockmap),
+            )
+        )
+        if archive_end > _ZIP64_THRESHOLD:
+            raise ValueError(
+                f"the package would be {archive_end} bytes: records past "
+                f"{_ZIP64_THRESHOLD} bytes need ZIP64 fields that are not "
+                "verified on a device, so this fails here instead of "
+                "producing one."
+            )
+
         with atomic_output(out_msix) as stream:
             written: list[_Entry] = []
             for s in streamed:
@@ -345,8 +394,7 @@ def pack_python(root: Path, out_msix: Path) -> Path:
                     flags=0 if name.isascii() else _FLAG_UTF8_NAME,
                 )
                 stream.write(_local_header_bytes(entry))
-                with open(s.payload_path, "rb") as payload:
-                    shutil.copyfileobj(payload, stream, BLOCK_SIZE)
+                _copy_payload(s, stream)
                 written.append(entry)
             # Generated parts are stored, so a reader reaches them without
             # inflating.
@@ -403,9 +451,7 @@ def append_stored_part(archive: bytes, name: str, payload: bytes) -> bytes:
         if flags & 0x08:
             raise ValueError(f"{name}: archive uses data descriptors; cannot append")
         if csize == _ZIP64_SENTINEL_32 or size == _ZIP64_SENTINEL_32:
-            extra = archive[
-                offset + 30 + name_len : offset + 30 + name_len + extra_len
-            ]
+            extra = archive[offset + 30 + name_len : offset + 30 + name_len + extra_len]
             size, csize = _read_zip64_extra(extra)
         entries.append(
             _Entry(
