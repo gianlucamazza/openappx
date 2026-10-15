@@ -152,8 +152,24 @@ def test_sha256_members_carry_spc_pe_image_data(with_code_integrity):
     data is SPC_PE_IMAGE_DATA — the catalogue says out loud that the digest
     is over a PE image, not over a flat file."""
     cat, _ = catalog_and_parts(with_code_integrity)
-    flattened = cat  # attribute is easiest to assert by encoded presence
-    assert (bytes([OID_TAG, len(SPC_PE_IMAGE_DATA)]) + SPC_PE_IMAGE_DATA) in flattened
+    sha256_members = [
+        member
+        for _, member in ctl_content(cat)[4][1]
+        if member[0][0] == OCTETS_TAG and len(member[0][1]) == 32
+    ]
+    assert sha256_members, "the fixture is expected to carry SHA-256 members"
+    # Searched inside each member's own attributes, so a certificate or the
+    # signer info elsewhere in SignedData cannot satisfy it.
+    for member in sha256_members:
+        assert (OID_TAG, SPC_PE_IMAGE_DATA) in der_nodes(member[1:])
+
+
+def der_nodes(nodes):
+    """Every (tag, value) node of a parsed DER subtree, depth first."""
+    for tag, value in nodes:
+        yield tag, value
+        if isinstance(value, list):
+            yield from der_nodes(value)
 
 
 def test_the_catalogue_entry_sits_before_the_signature_and_is_deflated(
