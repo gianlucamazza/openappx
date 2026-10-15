@@ -168,6 +168,21 @@ openappx bundle --package app-x64.msix --package app-x86.msix --out app.msixbund
 openappx sign --package app.msixbundle --pfx cert.pfx
 ```
 
+A resource package — the language-pack shape — is an ordinary layout whose
+`Identity` carries a `ResourceId` and no `ProcessorArchitecture`, shares the
+application's `Name` and `Publisher`, and sets
+`<Properties><ResourcePackage>true`. `examples/resource-language` is a
+checked-in one; packed, it bundles beside `examples/minimal-layout`:
+
+```bash
+openappx pack --root examples/minimal-layout   --out app.msix
+openappx pack --root examples/resource-language --out lang-de.msix
+openappx bundle --package app.msix --package lang-de.msix --out app.msixbundle
+```
+
+Known limit: registering such a mixed bundle needs the two `resources.pri`
+files to merge, which is `makepri`'s side of the fence — see the roadmap.
+
 `inspect` is the read side of `pack`: it re-derives every block hash from the bytes
 stored in the archive and compares them with `AppxBlockMap.xml`, checks `LfhSize`
 against the ZIP local headers actually written, and verifies that `[Content_Types].xml`
@@ -307,7 +322,7 @@ openappx/
 | Limit             | Detail                                                                                                                                                                                                                                                                  |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Files above 4 GiB | Cannot be carried. Describing one needs ZIP64 extra fields on the record, and a device refuses a package with those (`0x8007000B`) — see [docs/format.md](docs/format.md). `pack` fails with that explanation.                                                          |
-| Memory            | `pack` builds the archive in memory: fine for tens of MB, not for GB.                                                                                                                                                                                                   |
+| Memory            | `pack` streams (peak RSS is a few blocks, whatever the file sizes; packages past 4 GiB are refused); `sign` and `bundle` still buffer the whole archive.                                                                                                                                               |
 | Running an app    | A package packed and signed here has been **launched and observed running** on an Xbox Series S via `deploy --start` (0.6.3 — earlier releases built the launch request wrong, which for a while read as a console that refused everything). One console, one OS build. |
 | Timestamping      | `--timestamp` implemented; that Windows honours it past certificate expiry is untestable here.                                                                                                                                                                          |
 | Bundles           | A bundle mixing an application and a language pack registers only if both `resources.pri` merge; ours do not yet (`0x80070002`).                                                                                                                                        |

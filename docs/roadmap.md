@@ -95,7 +95,15 @@ Block _hashes_ were already correct: they cover uncompressed data.
       ZIP64 extra fields on the record, and a package with those is refused with
       `0x8007000B` — measured, using a package that installs without them.
       `pack` now fails with that explanation instead of emitting one.
-- [ ] `pack` holds the whole archive in memory; fine at 47 MB, not at 2 GB.
+- [x] `pack` streams: one pass hashing and deflating per 64 KiB block into
+      spill files beside the output, a second pass copying them into the
+      archive. Peak RSS on a 200 MB layout fell from ~420 MB to ~19 MB, with
+      the output byte-identical to the in-memory writer's — which remains in
+      the tree as the reference implementation, held to the same bytes by
+      `tests/test_streaming.py`. Still buffered whole: `sign` (the package is
+      rewritten in memory to insert the signature) and `bundle` (payload
+      packages are read whole); each is a rewrite of verified code that
+      deserves its own session.
 
 ## v0.6 — Bundles
 
@@ -113,16 +121,26 @@ Block _hashes_ were already correct: they cover uncompressed data.
 - [ ] A bundle mixing an application and a language pack registers only if both
       `resources.pri` files merge. Ours do not yet: `0x80070002` at registration.
       Building a PRI that expects to be merged is a `makepri` question, not a
-      packaging one.
+      packaging one. `examples/resource-language` is a checked-in resource
+      package for exercising the packaging half.
 
 ## Not done, and why
 
 - **Generating `AppxMetadata/CodeIntegrity.cat`** — we verify it (`AXCI`) but do
-  not produce it. It is an Authenticode catalogue, a second format to get right,
-  and only matters where Device Guard is enforced.
-- **Streaming pack** — the archive is assembled in memory. The writer is the
-  most carefully verified code here, so reworking it deserves a session where
-  the result can be re-checked on hardware, not the end of one.
+  not produce it. The format is now dissected rather than guessed at —
+  `tests/test_catalog.py` pins the structure of Microsoft's own catalogue, and
+  docs/signing.md records it — and the dissection is exactly why the writer
+  stays unwritten: the members are **PE Authenticode digests** (SHA-1 and
+  SHA-256 per PE payload, CheckSum and security directory excluded), so a
+  writer needs a correct Authenticode hasher for arbitrary PEs, and only a
+  device with Device Guard enforced could say whether the result is accepted.
+  A structurally plausible catalogue that enforcement rejects is the exact
+  failure mode this project refuses to ship.
+- **Streaming sign and bundle** — `pack` streams now, held byte-identical to
+  the old writer by a golden test; `sign` and `bundle` still buffer whole
+  archives. Both walk and rewrite verified ZIP structure, so each rework
+  deserves a session where the result can be re-checked on hardware, not the
+  end of one.
 - **Proving a repackaged app launches.** A package packed and signed here
   launches and runs (0.6.3, Xbox Series S) — but that one was compiled from
   scratch. The 47 MB _repackaged_ application has installed and never been
@@ -130,7 +148,10 @@ Block _hashes_ were already correct: they cover uncompressed data.
 
 ## Later (research, not committed)
 
-- `AppxMetadata/CodeIntegrity.cat` (the `AXCI` digest is already handled on read)
+- Generating `AppxMetadata/CodeIntegrity.cat` (read-side `AXCI` is handled; the
+  format is dissected in `tests/test_catalog.py` and docs/signing.md; the
+  writer waits on an Authenticode PE hasher and Device Guard hardware to
+  verify against — see "Not done, and why")
 
 ## Explicitly not planned as core
 

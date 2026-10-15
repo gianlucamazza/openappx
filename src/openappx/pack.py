@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         "--cert",
         type=Path,
         default=None,
-        help="unsupported: no backend can sign — see docs/signing.md",
+        help="unsupported here: sign after packing with `openappx sign`",
     )
     ap.add_argument("--cert-password", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--allow-missing", action="store_true")
@@ -43,10 +43,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cert or args.cert_password:
         print(
-            "error: signing is not implemented by any backend.\n"
-            "  `makemsix pack` takes only -d/-p; upstream validates signatures "
-            "but cannot create them.\n"
-            "  See docs/signing.md for what signing an .msix actually requires.",
+            "error: pack does not sign — packing and signing are separate steps.\n"
+            "  Sign the packed archive with:\n"
+            "    openappx sign --package <out.msix> --pfx <cert.pfx>\n"
+            "  (needs `pip install 'openappx[sign]'`; see docs/signing.md).",
             file=sys.stderr,
         )
         return 2

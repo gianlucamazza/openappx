@@ -2,6 +2,62 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## Unreleased
+
+### Changed
+
+- **`pack` streams.** One pass reads each payload file in 64 KiB blocks —
+  hashing, CRC and per-block deflate built as it goes, the compressed stream
+  spilled to a temporary directory beside the output — and a second pass
+  copies spill or source into the archive. Peak memory is a few blocks
+  whatever the file sizes: ~19 MB where the in-memory writer took ~420 MB
+  on a 200 MB layout, and slightly faster. The output is **byte-identical**:
+  the in-memory primitives stay in the tree as the reference implementation
+  (`bundle.py` still writes through them) and `tests/test_streaming.py` holds
+  the two writers to the same bytes on a layout exercising every branch.
+  Spill-to-temp rather than data descriptors, which Appx readers here refuse
+  by design. `sign` and `bundle` still buffer whole archives — each is a
+  rewrite of verified code that deserves its own session (see the roadmap).
+- **Digest verification no longer reads the package whole.** `compute_digests`
+  hashes AXPC/AXCD in chunks straight off the file and reads only the three
+  small named parts through `zipfile`; the golden tests against Microsoft's
+  own signed packages pass unchanged. `sign.digest.central_directory_offset`
+  now takes the package opened in binary mode instead of its bytes.
+- **A package past 4 GiB is refused**, as a single file past 4 GiB already
+  was. Streaming made such layouts reachable; their records would need ZIP64
+  fields in the central directory, which no device has been seen to accept.
+- **A source file that changes while `pack` runs fails the pack.** Pass 2
+  copies exactly the bytes pass 1 measured and re-checks the CRC of stored
+  parts, so a file still being written cannot shift the archive's offsets;
+  the temporary is discarded and nothing is published.
+
+### Added
+
+- **The CodeIntegrity catalogue format is dissected and pinned.** What
+  `AppxMetadata/CodeIntegrity.cat` is was research; it is now measured, off
+  Microsoft's own catalogue: a PKCS#7-signed certificate trust list whose
+  members are **PE Authenticode digests** (SHA-1 and SHA-256 per PE payload,
+  CheckSum and security directory excluded — reproduced exactly), with non-PE
+  payloads absent, the part deflated immediately before the signature, and its
+  content type declared by Override. `tests/test_catalog.py` holds every fact;
+  docs/signing.md records them. The writer deliberately stays unwritten: it
+  needs an Authenticode hasher for arbitrary PEs, and only enforced Device
+  Guard could confirm the result — the roadmap says so.
+- **`examples/resource-language`, a checked-in resource package.** The
+  language-pack shape: `Identity/@ResourceId` and no `ProcessorArchitecture`,
+  `<Properties><ResourcePackage>true`, and — deliberately — the same `Name`
+  and `Publisher` as `examples/minimal-layout`, so packing both and bundling
+  them exercises the mixed-bundle path the README now walks through. The
+  `resources.pri` merge needed to *register* such a bundle remains makepri's
+  side of the fence (see the roadmap).
+
+### Fixed
+
+- **`sign/__init__.py` and `pack --cert` still claimed signing was impossible.**
+  Both texts predate v0.3's signer and survived it; the docstring now describes
+  what `openappx sign` actually does, and the pack-time refusal points at it
+  instead of at a capability gap that no longer exists.
+
 ## 0.7.0 — 2026-10-01
 
 ### Added
