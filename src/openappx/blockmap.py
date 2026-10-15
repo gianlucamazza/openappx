@@ -182,9 +182,18 @@ class StreamedFile:
     blocks: FileBlocks
     crc: int
     payload_size: int  # compressed size when deflated, the file's size otherwise
-    deflated: bool
     source: Path
     spill: Path | None  # the deflate stream; None for stored parts
+
+    @property
+    def deflated(self) -> bool:
+        # One fact, one field: a part is deflated exactly when it kept a spill.
+        return self.spill is not None
+
+    @property
+    def payload_path(self) -> Path:
+        """The file whose bytes go into the archive for this part."""
+        return self.spill if self.spill is not None else self.source
 
 
 def prepare_file_streamed(
@@ -229,7 +238,6 @@ def prepare_file_streamed(
         blocks=FileBlocks(name, size, hashes, compressed_sizes if deflated else None),
         crc=crc & 0xFFFFFFFF,
         payload_size=stream_size if deflated else size,
-        deflated=deflated,
         source=path,
         spill=Path(spill_name) if deflated else None,
     )

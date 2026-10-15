@@ -345,7 +345,7 @@ def pack_python(root: Path, out_msix: Path) -> Path:
                     flags=0 if name.isascii() else _FLAG_UTF8_NAME,
                 )
                 stream.write(_local_header_bytes(entry))
-                with open(s.spill if s.deflated else s.source, "rb") as payload:
+                with open(s.payload_path, "rb") as payload:
                     shutil.copyfileobj(payload, stream, BLOCK_SIZE)
                 written.append(entry)
             # Generated parts are stored, so a reader reaches them without
